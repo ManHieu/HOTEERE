@@ -1,0 +1,215 @@
+import argparse
+import configparser
+from typing import Dict
+from pytorch_lightning import Trainer, seed_everything
+import torch
+import torch.nn as nn
+import os
+import optuna
+from transformers import HfArgumentParser
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+
+from arguments import DataTrainingArguments, ModelArguments, TrainingArguments
+from data_modules.datamodule import EEREDataModule
+from model.HOTEERE import HOTEERE
+
+
+def run(defaults: Dict):
+    config = configparser.ConfigParser(allow_no_value=False)
+    config.read(args.config_file)
+    job = args.job
+    assert job in config
+
+    print("Hyperparams: {}".format(defaults))
+    defaults.update(dict(config.items(job)))
+
+    for key in defaults:
+        if defaults[key] in ['True', 'False']:
+            defaults[key] = True if defaults[key]=='True' else False
+        if defaults[key] == 'None':
+            defaults[key] = None
+    
+    second_parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    second_parser.set_defaults(**defaults)
+    model_args: ModelArguments
+    data_args: DataTrainingArguments
+    training_args: TrainingArguments
+    # print(second_parser.parse_args_into_dataclasses(remaining_args))
+    model_args, data_args, training_args = second_parser.parse_args_into_dataclasses(remaining_args)
+    data_args.datasets = job
+
+    if args.tuning:
+        training_args.output_dir = './tuning_experiments'
+    try:
+        os.mkdir(training_args.output_dir)
+    except FileExistsError:
+        pass
+
+    f1s = []
+    ps = []
+    rs = []
+    val_f1s = []
+    val_ps = []
+    val_rs = []
+    for i in range(data_args.n_fold):
+        print(f"TRAINING AND TESTING IN FOLD {i}: ")
+        dm = EEREDataModule(data_name=data_args.datasets,
+                            batch_size=data_args.batch_size,
+                            data_dir=data_args.data_dir,
+                            fold=i)
+        number_step_in_epoch = len(dm.train_dataloader())/training_args.gradient_accumulation_steps
+        output_dir = os.path.join(
+            training_args.output_dir,
+            f'{args.job}'
+            f'-slr{training_args.selector_lr}'
+            f'-glr{training_args.generator_lr}'
+            f'-eps{training_args.num_epoches}'
+            f'-reward_weight{training_args.weight_source_perserve_ev_reward},{training_args.weight_gen_perserve_ev_reward},{training_args.weight_sent_diversity_reward}'
+            f'-mle_weight{training_args.weight_mle}'
+            f'-selector_weight{training_args.weight_selector_loss}'
+            f'-SOT_weight{model_args.null_sentence_prob},{model_args.kg_weight},{model_args.n_selected_sents}'
+            f'-WOT_weight{model_args.null_word_prob}, {model_args.n_selected_words}')
+        try:
+            os.mkdir(output_dir)
+        except FileExistsError:
+            pass
+        if data_args.n_fold != 1:
+            output_dir = os.path.join(output_dir,f'fold{i}')
+            try:
+                os.mkdir(output_dir)
+            except FileExistsError:
+                pass
+        checkpoint_callback = ModelCheckpoint(
+                                    dirpath=output_dir,
+                                    save_top_k=1,
+                                    monitor='f1_dev',
+                                    mode='max',
+                                    save_weights_only=True,
+                                    filename='{epoch}-{f1_dev:.2f}', # this cannot contain slashes 
+                                    )
+        lr_logger = LearningRateMonitor(logging_interval='step')
+
+        model = HOTEERE(weight_source_perserve_ev_reward=training_args.weight_source_perserve_ev_reward,
+                        weight_gen_perserve_ev_reward=training_args.weight_gen_perserve_ev_reward,
+                        weight_sent_diversity_reward=training_args.weight_sent_diversity_reward,
+                        weight_mle=training_args.weight_mle,
+                        num_training_step=int(number_step_in_epoch * training_args.num_epoches),
+                        selector_lr=training_args.selector_lr,
+                        generator_lr=training_args.generator_lr,
+                        weight_selector_loss=training_args.weight_selector_loss,
+                        OT_eps=0.1,
+                        OT_max_iter=100,
+                        OT_reduction='mean',
+                        dropout=0.5,
+                        null_sentence_prob=model_args.null_sentence_prob,
+                        kg_weight=model_args.kg_weight,
+                        finetune_selector_encoder=training_args.finetune_selector_encoder,
+                        finetune_in_OT_generator=training_args.finetune_in_OT_generator,
+                        encoder_name_or_path=model_args.model_name_or_path,
+                        tokenizer_name_or_path=model_args.tokenizer_name_or_path,
+                        n_selected_sents=model_args.n_selected_sents,
+                        null_word_prob=model_args.null_word_prob,
+                        n_selected_words=model_args.n_selected_words,
+                        output_max_length=model_args.output_max_length)
+        
+        trainer = Trainer(
+            # logger=tb_logger,
+            min_epochs=training_args.num_epoches,
+            max_epochs=training_args.num_epoches, 
+            gpus=[args.gpu], 
+            accumulate_grad_batches=training_args.gradient_accumulation_steps,
+            num_sanity_val_steps=2, 
+            val_check_interval=1.0, # use float to check every n epochs 
+            callbacks = [lr_logger, checkpoint_callback],
+        )
+
+        best_model = HOTEERE.load_from_checkpoint(checkpoint_callback.best_model_path)
+        print("Testing .....")
+        dm.setup('test')
+        trainer.test(best_model, dm)
+        # print(best_model.model_results)
+        p, r, f1 = best_model.model_results
+        val_p, val_r, val_f1 = best_model.best_vals
+        f1s.append(f1)
+        ps.append(p)
+        rs.append(r)
+        val_f1s.append(val_f1)
+        val_ps.append(val_p)
+        val_rs.append(val_r)
+        print(f"RESULT IN FOLD {i}: ")
+        print(f"F1: {f1}")
+        print(f"P: {p}")
+        print(f"R: {r}")
+    
+    f1 = sum(f1s)/len(f1s)
+    p = sum(ps)/len(ps)
+    r = sum(rs)/len(rs)
+    val_f1 = sum(val_f1s)/len(val_f1s)
+    val_p = sum(val_ps)/len(val_ps)
+    val_r = sum(val_rs)/len(val_rs)
+    print(f"F1: {f1} - P: {p} - R: {r}")
+    
+    return p, r, f1, val_p, val_r, val_f1
+
+def objective(trial: optuna.Trial):
+    defaults = {
+        'weight_source_perserve_ev_reward': trial.suggest_categorical('weight_source_perserve_ev_reward', [0.05, 0.1, 0.2]),
+        'weight_gen_perserve_ev_reward': trial.suggest_categorical('weight_gen_perserve_ev_reward', [0.05, 0.1, 0.2]),
+        'weight_sent_diversity_reward': trial.suggest_categorical('weight_sent_diversity_reward', [0.05, 0.1, 0.2]),
+        'weight_mle': trial.suggest_categorical('weight_mle', [0.5, 0.75, 0.9]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [5, 10, 15, 20]),
+        'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3]),
+        'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.5, 0.25]),
+        'kg_weight': trial.suggest_categorical('num_epoches', [0.5, 0.25, 0.1]),
+        'null_sentence_prob': trial.suggest_categorical('null_sentence_prob', [0.5, 0.75, 0.8]),
+        'null_word_prob': trial.suggest_categorical('null_word_prob', [0.5, 0.75, 0.8]),
+        'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
+        'n_selected_words': trial.suggest_categorical('n_selected_words', [None]),
+        'output_max_length': trial.suggest_categorical('output_max_length', [64]),
+        'finetune_selector_encoder': trial.suggest_categorical('finetune_selector_encoder', [True]),
+        'finetune_in_OT_generator': trial.suggest_categorical('finetune_in_OT_generator', [True]),
+    }
+
+    seed_everything(1741, workers=True)
+
+    dataset = args.job
+    
+    p, r, f1, val_p, val_r, val_f1 = run(defaults=defaults)
+
+    record_file_name = 'result.txt'
+    if args.tuning:
+        record_file_name = f'result_{args.job}_{args.lang}_{defaults["tokenizer"].split(r"/")[-1]}.txt'
+
+    with open(record_file_name, 'a', encoding='utf-8') as f:
+        f.write(f"{'--'*10} \n")
+        f.write(f"Dataset: {dataset} \n")
+        f.write(f"Random_state: 1741\n")
+        f.write(f"Hyperparams: \n {defaults}\n")
+        f.write(f"F1: {f1} - val_F1: {val_f1} \n")
+        f.write(f"P: {p} - val_F1: {val_p} \n")
+        f.write(f"R: {r} - val_F1: {val_r} \n")
+
+    return f1
+
+
+ 
+if __name__ == '__main__':
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('job')
+    parser.add_argument('-c', '--config_file', type=str, default='config.ini', help='configuration file')
+    parser.add_argument('-g', '--gpu', type=int, default=0, help='which GPU to use')
+    parser.add_argument('-t', '--tuning', action='store_true', default=False, help='tune hyperparameters')
+
+    args, remaining_args = parser.parse_known_args()
+
+    if args.tuning:
+        print("tuning ......")
+        # sampler = optuna.samplers.TPESampler(seed=1741)
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=50)
+        trial = study.best_trial
+        print('Accuracy: {}'.format(trial.value))
+        print("Best hyperparameters: {}".format(trial.params))
+

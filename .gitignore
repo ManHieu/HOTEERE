@@ -1,0 +1,7 @@
+datasets/*
+bbc_20130322_1150.tml.json
+article-1526.tsvx.json
+1_1ecbplus.xml.xml.json
+draft*
+trankit/*
+*__pycache__*
