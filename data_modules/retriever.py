@@ -43,12 +43,12 @@ class AtomicRetriever(object):
         dev = kb_path + 'dev.tsv'
         test = kb_path + 'test.tsv'
         kb_path = [train, dev, test]
-        kb = []
+        kb = defaultdict(list)
         for split_path in kb_path:
             for line in open(split_path, encoding='UTF-8'):
                 triples = line.split('\t')
                 if triples[1] in self.choosen_rel and 'none' not in triples[2]:
-                    kb.append(triples)
+                    kb[triples[0]].append((triples[1], triples[2]))
         return kb
 
     def retrive_from_atomic(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=3):
@@ -72,7 +72,7 @@ class AtomicRetriever(object):
         for m, lemmatized_m in zip(event_mention, lemmatized_mention):
             if self.event_to_concept.get((m, lemmatized_m)) == None:
                 for triple in self.kb:
-                    if m in triple[0] or m in triple[2] or lemmatized_m in triple[0] or lemmatized_m in triple[2]:
+                    if m in triple[0] or lemmatized_m in triple[0]:
                         self.event_to_concept[(m, lemmatized_m)].append(triple)
                         knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
                         embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
