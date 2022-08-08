@@ -1,3 +1,4 @@
+from collections import defaultdict
 import re
 import requests
 from typing import List
@@ -16,14 +17,12 @@ class AtomicRetriever(object):
                             'HinderedBy', 'InstanceOf', 'isAfter', 'isBefore', 'MotivatedByGoal', 'NotDesires',
                             'UsedFor', 'oEffect', 'ReceivesAction', 'PartOf', 'xEffect', 'xIntent,','xReason',]
         self.rel_to_text = {
-            'CapableOf': 'is capable of', 
             'Causes': 'causes', 
             'CausesDesire': 'makes someone want', 
             'Desires': 'desires', 
             'HasA': 'has', 
             'HasSubEvent': 'includes the event',
             'HinderedBy': 'can be hindered by', 
-            'InstanceOf': 'is an example of', 
             'isAfter': 'happens after', 
             'isBefore': 'happens before', 
             'MotivatedByGoal': 'is a step towards accomplishing the goal', 
@@ -37,6 +36,7 @@ class AtomicRetriever(object):
             'xReason': 'because', 
         }
         self.kb = self.load_kb(kb_path)
+        self.event_to_concept = defaultdict(list)
         
     def load_kb(self, kb_path):
         train = kb_path + 'train.tsv'
@@ -70,14 +70,26 @@ class AtomicRetriever(object):
 
         knowledge_sents = []
         for m, lemmatized_m in zip(event_mention, lemmatized_mention):
-            for triple in self.kb:
-                if m in triple[0] or m in triple[2] or lemmatized_m in triple[0] or lemmatized_m in triple[2]:
-                    knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
-                    embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
-                    embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
-                    cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
-                    score = float(cosine_scores[0][0])
-                    knowledge_sents.append((knowledge_sent, score))
+            if self.event_to_concept.get((m, lemmatized_m)) == None:
+                for triple in self.kb:
+                    if m in triple[0] or m in triple[2] or lemmatized_m in triple[0] or lemmatized_m in triple[2]:
+                        self.event_to_concept[(m, lemmatized_m)].append(triple)
+                        knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
+                        embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
+                        embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
+                        cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
+                        score = float(cosine_scores[0][0])
+                        knowledge_sents.append((knowledge_sent, score))
+            else:
+                for triple in self.event_to_concept.get((m, lemmatized_m)):
+                    if m in triple[0] or m in triple[2] or lemmatized_m in triple[0] or lemmatized_m in triple[2]:
+                        self.event_to_concept[(m, lemmatized_m)] = triple
+                        knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
+                        embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
+                        embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
+                        cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
+                        score = float(cosine_scores[0][0])
+                        knowledge_sents.append((knowledge_sent, score))
         
         knowledge_sents.sort(key=lambda x: x[1], reverse=True)
         return knowledge_sents[0:top_k]

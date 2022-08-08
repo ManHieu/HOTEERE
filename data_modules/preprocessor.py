@@ -20,7 +20,7 @@ class Preprocessor(object):
         self.inter = inter
         self.datapoint = datapoint
         self.register_reader(self.dataset)
-        self.atomic_retriever = AtomicRetriever('datasets/atomic2020_data-feb2021/atomic2020_data-feb2021')
+        self.atomic_retriever = AtomicRetriever('datasets/atomic2020_data-feb2021/atomic2020_data-feb2021/')
         self.conceptnet_retriever = ConceptNetRetriever()
 
     def register_reader(self, dataset):
@@ -34,7 +34,7 @@ class Preprocessor(object):
             raise ValueError("We have not supported this dataset {} yet!".format(self.dataset))
 
     def retrieve_knowledge_sentences(self, my_dict):
-        for eid, ev in my_dict['event_dict'].items():
+        for eid, ev in tqdm.tqdm(my_dict['event_dict'].items()):
             sid = ev['sent_id']
             knowledge_sentences = []
             sent = my_dict['sentences'][sid]['tokens']
@@ -83,6 +83,7 @@ class Preprocessor(object):
                 # if i == 11:
                 #     break
                 # i = i + 1
+                cache_dir = dir_name+f'hoteer_{self.inter}_{self.intra}'
                 try:
                     os.mkdir(dir_name+f'hoteer_{self.inter}_{self.intra}')
                 except FileExistsError:

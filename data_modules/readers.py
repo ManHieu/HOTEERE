@@ -1,3 +1,4 @@
+from itertools import combinations
 import json
 import bs4
 import xml.etree.ElementTree as ET
@@ -5,7 +6,6 @@ from collections import defaultdict
 # from nltk import sent_tokenize
 from bs4 import BeautifulSoup as Soup
 import csv
-from torch import combinations
 from trankit import Pipeline
 from data_modules.utils import find_m_id, find_sent_id, get_mention_span, id_lookup, sent_id_lookup, span_SENT_to_DOC, tokenized_to_origin_span
 from allennlp.predictors.predictor import Predictor
@@ -400,7 +400,7 @@ def cat_xml_reader(dir_name, file_name, intra=True, inter=False):
                 my_dict['event_dict'][eid]['start_char'], my_dict['event_dict'][eid]['end_char'] = start, start + len(mention)
                 my_dict['event_dict'][eid]['token_id'] = mention_span_sent
                 my_dict['event_dict'][eid]['class'] = e_typ
-                my_dict['event_dict'][eid]['sent_id'] = find_sent_id(my_dict['sentences'], [start, start + len(mention)])
+                my_dict['event_dict'][eid]['sent_id'] = sent_id = find_sent_id(my_dict['sentences'], [start, start + len(mention)])
                 if not all(tok in  my_dict["event_dict"][eid]["mention"] for tok in my_dict["sentences"][sent_id]["tokens"][my_dict["event_dict"][eid]["token_id"][0]: my_dict["event_dict"][eid]["token_id"][-1] + 1]):
                     print(f'{my_dict["event_dict"][eid]["mention"]} - \
                     {my_dict["sentences"][sent_id]["tokens"][my_dict["event_dict"][eid]["token_id"][0]: my_dict["event_dict"][eid]["token_id"][-1] + 1]}')
