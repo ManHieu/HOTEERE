@@ -8,7 +8,7 @@ from data_modules.utils import sentence_encode
 from sklearn.model_selection import KFold, train_test_split
 import tqdm
 from data_modules.datapoint_formats import get_datapoint
-from data_modules.readers import cat_xml_reader, tml_reader, tsvx_reader
+from data_modules.readers import cat_xml_reader, ctb_cat_reader, tml_reader, tsvx_reader
 import random
 import numpy as np
 
@@ -30,6 +30,8 @@ class Preprocessor(object):
             self.reader = cat_xml_reader
         elif 'MATRES' in dataset:
             self.reader = tml_reader
+        elif dataset == 'Causal-TB':
+            self.reader = ctb_cat_reader
         else:
             raise ValueError("We have not supported this dataset {} yet!".format(self.dataset))
 
@@ -111,7 +113,7 @@ class Preprocessor(object):
             for my_dict in tqdm.tqdm(corpus):
                 len_doc = sum([len(sentence['tokens']) for sentence in my_dict['sentences']])
                 doc_info = True
-                processed_corpus.extend(get_datapoint(self.datapoint, my_dict, doc_info))
+                processed_corpus.extend(get_datapoint(self.datapoint, my_dict))
             if save_path != None and save_cache == True:
                 with open(save_path, 'w', encoding='utf-8') as f:
                     json.dump(processed_corpus, f, indent=6)
@@ -121,7 +123,7 @@ class Preprocessor(object):
                 for my_dict in tqdm.tqdm(topic):
                     len_doc = sum([len(sentence['tokens']) for sentence in my_dict['sentences']])
                     doc_info = True
-                    processed_corpus[key].extend(get_datapoint(self.datapoint, my_dict, doc_info))
+                    processed_corpus[key].extend(get_datapoint(self.datapoint, my_dict))
             if save_path != None and save_cache == True:
                 with open(save_path, 'w', encoding='utf-8') as f:
                     json.dump(processed_corpus, f, indent=6)
@@ -224,6 +226,34 @@ def load(dataset: str, save_cache=False):
             processed_path = f"./datasets/EventStoryLine/{fold}/val.json"
             test = processor.process_and_save(test, processed_path, save_cache)
             folds[fold] = [train, val, test]
+        return folds
+    
+    if dataset == 'Causal-TB':
+        datapoint = 'hoteere_data_point'
+        kfold = KFold(n_splits=10)
+        processor = Preprocessor(dataset, datapoint)
+        corpus_dir = './datasets/Causal-TimeBank/Causal-TimeBank-CAT/'
+        corpus = processor.load_dataset(corpus_dir)
+
+        random.shuffle(corpus)
+        folds = {}
+        for fold, (train_ids, valid_ids) in enumerate(kfold.split(corpus)):
+            try:
+                os.mkdir(f"./datasets/EventStoryLine/{fold}")
+            except FileExistsError:
+                pass
+
+            train = [corpus[id] for id in train_ids]
+            # print(train[0])
+            validate = [corpus[id] for id in valid_ids]
+        
+            processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
+            train = processor.process_and_save(train, processed_path, save_cache)
+
+            processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
+            val = processor.process_and_save(validate, processed_path, save_cache)
+            
+            folds[fold] = [train, val, val]
         return folds
 
     if dataset == 'MATRES':
