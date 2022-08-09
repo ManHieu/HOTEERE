@@ -7,14 +7,17 @@ import networkx as nx
 from sentence_transformers import SentenceTransformer, util
 
 
+def check_sub_str(str, sub_str):
+    return sub_str in str
+
 
 class AtomicRetriever(object):
     def __init__(self,
                 kb_path) -> None:
         self.p = Pipeline('english', cache_dir='./trankit')
         self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
-        self.choosen_rel = ['CapableOf', 'Causes', 'CausesDesire', 'Desires', 'HasA', 'HasSubEvent',
-                            'HinderedBy', 'InstanceOf', 'isAfter', 'isBefore', 'MotivatedByGoal', 'NotDesires',
+        self.choosen_rel = ['Causes', 'CausesDesire', 'Desires', 'HasA', 'HasSubEvent',
+                            'HinderedBy', 'isAfter', 'isBefore', 'MotivatedByGoal', 'NotDesires',
                             'UsedFor', 'oEffect', 'ReceivesAction', 'PartOf', 'xEffect', 'xIntent,','xReason',]
         self.rel_to_text = {
             'Causes': 'causes', 
@@ -37,6 +40,7 @@ class AtomicRetriever(object):
         }
         self.kb = self.load_kb(kb_path)
         self.event_to_concept = defaultdict(list)
+        self.seq_emb_cache = {}
         
     def load_kb(self, kb_path):
         train = kb_path + 'train.tsv'
@@ -50,46 +54,66 @@ class AtomicRetriever(object):
                 if triples[1] in self.choosen_rel and 'none' not in triples[2]:
                     kb[triples[0]].append((triples[1], triples[2]))
         return kb
+        # heads = []
+        # rels = []
+        # tails = []
+        # for split_path in kb_path:
+        #     for line in open(split_path, encoding='UTF-8'):
+        #         triples = line.split('\t')
+        #         if triples[1] in self.choosen_rel and 'none' not in triples[2]:
+        #             heads.append(triples[0])
+        #             tails.append(triples[2])
+        #             rels.append(triples[1])
+        # df_kb = pd.DataFrame({
+        #     'head': heads,
+        #     'rel': rels,
+        #     'tail': tails,
+        # })
 
     def retrive_from_atomic(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=3):
-        parsed_tokens = self.p.posdep(input_seq, is_sent=True)['tokens']
-        heads = [token['head'] for token in parsed_tokens]
-        dep_tree = nx.DiGraph()
-        for head, tail in zip(heads, list(range(len(input_seq) + 1))):
-            if head != tail:
-                dep_tree.add_edge(head, tail)
-        
-        k_hop_tree = []
-        for idx in trigger_token_id:
-            k_hop_tree.extend(list(nx.dfs_tree(dep_tree, idx+1, depth_limit=2).nodes()))
-        k_hop_seq = [node - 1 for node in k_hop_tree if node > 0]
-        k_hop_seq.sort()
-        k_hop_seq = ' '.join([input_seq[idx] for idx in k_hop_seq])
+        k_hop_seq = ' '.join(input_seq)
         event_mention = [input_seq[idx] for idx in trigger_token_id]
         lemmatized_mention = [t['lemma'] for t in self.p.lemmatize(event_mention, is_sent=True)['tokens']]
 
         knowledge_sents = []
         for m, lemmatized_m in zip(event_mention, lemmatized_mention):
             if self.event_to_concept.get((m, lemmatized_m)) == None:
-                for triple in self.kb:
-                    if m in triple[0] or lemmatized_m in triple[0]:
-                        self.event_to_concept[(m, lemmatized_m)].append(triple)
-                        knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
-                        embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
-                        embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
-                        cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
-                        score = float(cosine_scores[0][0])
-                        knowledge_sents.append((knowledge_sent, score))
+                triples = []
+                for head in self.kb.keys():
+                    if m in head or lemmatized_m in head:
+                        for (rel, tail) in self.kb[head]:
+                            triples.append([head, rel, tail])
+                self.event_to_concept[(m, lemmatized_m)] = triples
             else:
-                for triple in self.event_to_concept.get((m, lemmatized_m)):
-                    if m in triple[0] or m in triple[2] or lemmatized_m in triple[0] or lemmatized_m in triple[2]:
-                        self.event_to_concept[(m, lemmatized_m)] = triple
-                        knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
-                        embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
-                        embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
-                        cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
-                        score = float(cosine_scores[0][0])
-                        knowledge_sents.append((knowledge_sent, score))
+                triples = self.event_to_concept[(m, lemmatized_m)]
+
+            # if self.event_to_concept.get((m, lemmatized_m)) == None:
+            #     triples = []
+            #     self.kb['conatain_str'] = self.kb['head'].parallel_apply(lambda x: self.check_sub_str(x, m))
+            #     triples.extend(self.kb[self.kb['conatain_str']].values.tolist())
+            #     self.kb['conatain_str'] = self.kb['head'].parallel_apply(lambda x: self.check_sub_str(x, lemmatized_m))
+            #     triples.extend(self.kb[self.kb['conatain_str']].values.tolist())
+            #     self.event_to_concept[(m, lemmatized_m)] = triples
+            # else:
+            #     triples = self.event_to_concept.get((m, lemmatized_m))
+            # print(triples)
+            for triple in triples:
+                knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
+                if self.seq_emb_cache.get(knowledge_sent) == None:
+                    embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
+                    self.seq_emb_cache[knowledge_sent] = embeddings1
+                else:
+                    embeddings1 = self.seq_emb_cache[knowledge_sent]
+
+                if self.seq_emb_cache.get(k_hop_seq) == None:
+                    embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
+                    self.seq_emb_cache[k_hop_seq] = embeddings2
+                else:
+                    embeddings2 = self.seq_emb_cache[k_hop_seq]
+
+                cosine_scores = util.pytorch_cos_sim(embeddings2, embeddings1)
+                score = float(cosine_scores[0][0])
+                knowledge_sents.append((knowledge_sent, score))
         
         knowledge_sents.sort(key=lambda x: x[1], reverse=True)
         return knowledge_sents[0:top_k]
@@ -114,38 +138,36 @@ class ConceptNetRetriever(object):
             'CreatedBy': 'is created by', 
             'Desires': 'desires'
         }
-        self.p = Pipeline('english', cache_dir='./trankit')
+        # self.p = Pipeline('english', cache_dir='./trankit')
+        self.seq_emb_cache = {}
     
     def retrieve_from_conceptnet(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=3):
-        parsed_tokens = self.p.posdep(input_seq, is_sent=True)['tokens']
-        heads = [token['head'] for token in parsed_tokens]
-        dep_tree = nx.DiGraph()
-        for head, tail in zip(heads, list(range(len(input_seq) + 1))):
-            if head != tail:
-                dep_tree.add_edge(head, tail)
-        
-        k_hop_tree = []
-        for idx in trigger_token_id:
-            k_hop_tree.extend(list(nx.dfs_tree(dep_tree, idx+1, depth_limit=2).nodes()))
-        k_hop_seq = [node - 1 for node in k_hop_tree if node > 0]
-        k_hop_seq.sort()
-        k_hop_seq = ' '.join([input_seq[idx] for idx in k_hop_seq])
+        k_hop_seq = ' '.join(input_seq)
         event_mention = [input_seq[idx] for idx in trigger_token_id]
-        lemmatized_mention = [t['lemma'] for t in self.p.lemmatize(event_mention, is_sent=True)['tokens']]
+        lemmatized_mention = []
         knowledge_sents = []
         for event in ['_'.join(event_mention), '_'.join(lemmatized_mention)]:
             obj = requests.get('http://api.conceptnet.io/c/en/' + event).json()
             for e in obj['edges']:
                 # print(e)
-                if e['start']['language'] == 'en' and e['end']['language'] == 'en':
+                if e['start'].get('language') == 'en' and e['end'].get('language') == 'en':
                     if e['rel']['label'] in self.chosen_rel:
                         if e['surfaceText'] != None:
                             knowledge_sent = re.sub(r'[\[\]]','', e['surfaceText'])
                         else:
                             knowledge_sent = ' '.join([e['start']['label'], self.rel_to_text[e['rel']['label']], e['end']['label']])
-                        embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
-                        embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
-                        cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
+                        if self.seq_emb_cache.get(knowledge_sent) == None:
+                            embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
+                            self.seq_emb_cache[knowledge_sent] = embeddings1
+                        else:
+                            embeddings1 = self.seq_emb_cache[knowledge_sent]
+
+                        if self.seq_emb_cache.get(k_hop_seq) == None:
+                            embeddings2 = self.sim_evaluator.encode([k_hop_seq], convert_to_tensor=True)
+                            self.seq_emb_cache[k_hop_seq] = embeddings2
+                        else:
+                            embeddings2 = self.seq_emb_cache[k_hop_seq]
+                        cosine_scores = util.pytorch_cos_sim(embeddings2, embeddings1)
                         score = float(cosine_scores[0][0])
                         knowledge_sents.append((knowledge_sent, score))
         

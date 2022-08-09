@@ -75,8 +75,7 @@ def find_sent_id(sentences: List[Dict], mention_span: List[int]):
     Find sentence id of mention (ESL)
     """
     for sent in sentences:
-        token_span_doc = (sent['sent_start_char'], sent['sent_end_char'])
-        if set(mention_span) == set(mention_span).intersection(set(range(token_span_doc[0], token_span_doc[1]))):
+        if mention_span[0] >= sent['sent_start_char'] and mention_span[1] <= sent['sent_end_char']:
             return sent['sent_id']
     print(f"Cannot find the sent id of mention {mention_span} in sentences {sentences}")
     return None
@@ -87,6 +86,7 @@ def get_mention_span(span: str) -> List[int]:
     return span
 
 
+@torch.no_grad()
 def sentence_encode(doc_sentence: List[str]):
     doc_presentation = []
     for sentence in doc_sentence:
@@ -94,8 +94,8 @@ def sentence_encode(doc_sentence: List[str]):
         sentence_presentation = sentence_encoder(**sentence_tokenized).last_hidden_state[:, 0]
         # print(f"sentence presentation size: {sentence_presentation.size()}")
         doc_presentation.append(sentence_presentation)
-    doc_presentation = torch.stack(doc_presentation, dim=0)
-    print(f"Doc presentation size: {doc_presentation.size()}")
+    doc_presentation = torch.stack(doc_presentation, dim=0).squeeze(1)
+    # print(f"Doc presentation size: {doc_presentation.size()}")
     return doc_presentation
         
 

@@ -11,6 +11,7 @@ from data_modules.datapoint_formats import get_datapoint
 from data_modules.readers import cat_xml_reader, tml_reader, tsvx_reader
 import random
 import numpy as np
+import torch
 
 
 class Preprocessor(object):
@@ -20,7 +21,7 @@ class Preprocessor(object):
         self.inter = inter
         self.datapoint = datapoint
         self.register_reader(self.dataset)
-        self.atomic_retriever = AtomicRetriever('datasets/atomic2020_data-feb2021/atomic2020_data-feb2021/')
+        # self.atomic_retriever = AtomicRetriever('datasets/atomic2020_data-feb2021/atomic2020_data-feb2021/')
         self.conceptnet_retriever = ConceptNetRetriever()
 
     def register_reader(self, dataset):
@@ -34,16 +35,18 @@ class Preprocessor(object):
             raise ValueError("We have not supported this dataset {} yet!".format(self.dataset))
 
     def retrieve_knowledge_sentences(self, my_dict):
-        for eid, ev in tqdm.tqdm(my_dict['event_dict'].items()):
+        for eid, ev in my_dict['event_dict'].items():
             sid = ev['sent_id']
             knowledge_sentences = []
             sent = my_dict['sentences'][sid]['tokens']
             knowledge_sentences = knowledge_sentences +  [sent[0] for sent in self.conceptnet_retriever.retrieve_from_conceptnet(sent, ev['token_id'], top_k=5)]
-            knowledge_sentences = knowledge_sentences +  [sent[0] for sent in self.atomic_retriever.retrive_from_atomic(sent, ev['token_id'], top_k=3)]
-            knowledge_sentences = list(set(knowledge_sentences))
-            knowledge_sentences_emb = sentence_encode(knowledge_sentences)
-            my_dict['event_dict'][eid]['knowledge_sentences'] = {kg_sent:knowledge_sentences_emb[i] for i, kg_sent in enumerate(knowledge_sentences)}
-        print(f"my_dict after add knowledge sentences: {my_dict}")
+            # knowledge_sentences = knowledge_sentences +  [sent[0] for sent in self.atomic_retriever.retrive_from_atomic(sent, ev['token_id'], top_k=3)]
+            if len(knowledge_sentences) > 0:
+                knowledge_sentences = list(set(knowledge_sentences))
+                knowledge_sentences_emb = sentence_encode(knowledge_sentences) # (ns. hidden_size)
+                my_dict['event_dict'][eid]['knowledge_sentences'] = {kg_sent:knowledge_sentences_emb[i] for i, kg_sent in enumerate(knowledge_sentences)}
+            else:
+                my_dict['event_dict'][eid]['knowledge_sentences'] = {'': torch.zeros(768)}
         return my_dict
 
     def load_dataset(self, dir_name):
@@ -57,10 +60,6 @@ class Preprocessor(object):
                     file_name = os.path.join(topic, file_name)
                     if file_name.endswith('.xml'):
                         cache_dir = dir_name+f'hoteer_{self.inter}_{self.intra}'
-                        try:
-                            os.mkdir(dir_name+f'hoteer_{self.inter}_{self.intra}')
-                        except FileExistsError:
-                            pass
                         cache_file = cache_dir + f'/{file_name}.pkl'
                         if os.path.exists(cache_file):
                             with open(cache_file, 'rb') as f:
@@ -70,8 +69,9 @@ class Preprocessor(object):
                             my_dict = self.reader(dir_name, file_name, inter=self.inter, intra=self.intra)
                             if my_dict != None:
                                 doc_presentation = sentence_encode([sent['content'] for sent in my_dict['sentences']])
-                                my_dict['doc_presentation'] = doc_presentation
+                                my_dict['doc_presentation'] = doc_presentation # (ns, hidden_size)
                                 my_dict = self.retrieve_knowledge_sentences(my_dict)
+                                os.makedirs(os.path.dirname(cache_file), exist_ok=True)
                                 with open(cache_file, 'wb') as f:
                                     pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
                                 corpus.append(my_dict)
@@ -84,10 +84,6 @@ class Preprocessor(object):
                 #     break
                 # i = i + 1
                 cache_dir = dir_name+f'hoteer_{self.inter}_{self.intra}'
-                try:
-                    os.mkdir(dir_name+f'hoteer_{self.inter}_{self.intra}')
-                except FileExistsError:
-                    pass
                 cache_file = cache_dir + f'/{file_name}.pkl'
                 if os.path.exists(cache_file):
                     with open(cache_file, 'rb') as f:
@@ -99,6 +95,7 @@ class Preprocessor(object):
                         doc_presentation = sentence_encode([sent['content'] for sent in my_dict['sentences']])
                         my_dict['doc_presentation'] = doc_presentation
                         my_dict = self.retrieve_knowledge_sentences(my_dict)
+                        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
                         with open(cache_file, 'wb') as f:
                             pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
                         corpus.append(my_dict)
@@ -113,6 +110,7 @@ class Preprocessor(object):
                 doc_info = True
                 processed_corpus.extend(get_datapoint(self.datapoint, my_dict, doc_info))
             if save_path != None and save_cache == True:
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 with open(save_path, 'w', encoding='utf-8') as f:
                     json.dump(processed_corpus, f, indent=6)
         else:
@@ -123,6 +121,7 @@ class Preprocessor(object):
                     doc_info = True
                     processed_corpus[key].extend(get_datapoint(self.datapoint, my_dict, doc_info))
             if save_path != None and save_cache == True:
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 with open(save_path, 'w', encoding='utf-8') as f:
                     json.dump(processed_corpus, f, indent=6)
 
