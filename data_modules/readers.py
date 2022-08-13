@@ -11,9 +11,9 @@ from data_modules.utils import find_m_id, find_sent_id, get_mention_span, id_loo
 from allennlp.predictors.predictor import Predictor
 import allennlp_models.tagging
 
-predictor = Predictor.from_path("https://storage.googleapis.com/allennlp-public-models/coref-spanbert-large-2021.03.10.tar.gz")
+# predictor = Predictor.from_path("https://storage.googleapis.com/allennlp-public-models/coref-spanbert-large-2021.03.10.tar.gz")
 
-p = Pipeline('english', cache_dir='./trankit')
+# p = Pipeline('english', cache_dir='./trankit')
 # p.add('danish')
 # p.add('spanish')
 # p.add('turkish')
@@ -511,9 +511,9 @@ def ctb_cat_reader(dir_name, file_name):
     _sent_token_span_doc = defaultdict(list)
     for tok in xml_dom.find_all('token'):
         token = tok.text
-        t_id = int(tok.attrs['id'])
+        t_id = int(tok.attrs['t_id'])
         sent_id = int(tok.attrs['sentence'])
-        tok_sent_id = int(tok.attrs['number'])
+        tok_sent_id = len(_sent_dict[sent_id])
 
         my_dict['doc_tokens'][t_id] = {
             'token': token,

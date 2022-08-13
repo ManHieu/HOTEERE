@@ -30,7 +30,7 @@ class ECIInputFormat(BaseInputFormat):
     end_trigger_token = ']'
     template = "{task_prefix}\n\n{context}\n\nIs there a causal relation between {head} and {tail}?"
 
-    def format_input(self, context: str, head_position: Tuple(int, int), tail_position: Tuple(int, int)) -> str:
+    def format_input(self, context: str, head_position: Tuple[int, int], tail_position: Tuple[int, int]) -> str:
         head_str = context[head_position[0]: head_position[1]]
         tail_str = context[tail_position[0]: tail_position[1]]
         ordered_position = list(head_position) + list(tail_position)

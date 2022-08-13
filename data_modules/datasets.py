@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 import pickle
 from tqdm import tqdm
 from data_modules.base_dataset import BaseDataset
-from data_modules.input_example import Entity, InputExample, InputFeature, Relation, RelationType
+from data_modules.input_example import Entity, InputExample, Relation, RelationType
 from data_modules.preprocessor import load
 
 
@@ -45,7 +45,7 @@ class EEREDataset(BaseDataset):
         print(f"Loading {self.name} from {data_path} with sample rate is {self.sample_rate}")
         corpus = load(self.name, save_cache=False)
         for fold in corpus.keys():
-            train, val, test = corpus[i]
+            train, val, test = corpus[fold]
             example_train, example_test, example_val = [], [], []
             for i, datapoint in enumerate(train):
                 if datapoint['label'] in ['NoRel'] and random.uniform(0, 1) >= self.sample_rate:

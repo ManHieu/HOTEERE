@@ -47,8 +47,19 @@ def hoteere_data_point(my_dict):
     spl = dict(nx.all_pairs_shortest_path_length(doc_graph))
     
     for key, val in my_dict['relation_dict'].items():
-        eid1, eid2 = re.sub('\W+','', key.split(',').strip()[0]), re.sub('\W+','', key.split(',').strip()[1])
-        e1, e2 = my_dict['event_dict'][eid1], my_dict['event_dict'][eid2]
+        eid1, eid2 = re.sub('\W+','', key.split(',')[0].strip()), re.sub('\W+','', key.split(',')[1].strip())
+        if my_dict['event_dict'].get(eid1) == None:
+            e1 = my_dict['event_dict'].get(int(eid1))
+        else:
+            print(f"There is no {eid1} in list event!")
+            continue
+
+        if my_dict['event_dict'].get(eid2) == None:
+            e2 = my_dict['event_dict'].get(int(eid2))
+        else:
+            print(f"There is no {eid2} in list event!")
+            continue
+        
         sid1, sid2 = e1['sent_id'], e2['sent_id']
         e1_span = (e1['start_char'] - my_dict['sentences'][sid1]['sent_start_char'], e1['end_char'] - my_dict['sentences'][sid1]['sent_start_char'])
         assert doc_sentences[sid1][e1_span[0]: e1_span[1]] == e1['mention'], \
@@ -66,7 +77,7 @@ def hoteere_data_point(my_dict):
                 kg_sent_embs.append(e2['knowledge_sentences'].get(kg_sent))
         assert len(kg_sent_embs) == len(knowledge_sentences)
         kg_sent_embs = torch.stack(kg_sent_embs, dim=0)
-        print(f"kg_sent_embs: {kg_sent_embs.size()}")
+        # print(f"kg_sent_embs: {kg_sent_embs.size()}")
         ctx_sids = list(set(range(len(doc_sentences))) - set([sid1, sid2]))
         score_over_doc_tree = {
             sid1: [spl[sid1][sid] for sid in ctx_sids],

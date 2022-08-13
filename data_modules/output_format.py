@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import re
 from typing import Dict, List, Set, Tuple
 
 
@@ -50,18 +51,10 @@ class ECIOuputFormat(BaseOutputFormat):
         return template
     
     def find_trigger_position(self, generated_seq: str, head: str, tail: str):
-        head_position = set([(len(generated_seq.split(f'[{head}]')[0]) + 1, 
-                        len(generated_seq.split(f'[{head}]')[0]) + len(f'[{head}]')) - 1, 
-
-                        (len(generated_seq) - len(generated_seq.split(f'[{head}]')[-1]) - len(f'[{head}]') + 1, 
-                        len(generated_seq) - len(generated_seq.split(f'[{head}]')[-1]) - 1)])
-        
-        tail_position = set([(len(generated_seq.split(f'[{tail}]')[0]) + 1, 
-                        len(generated_seq.split(f'[{tail}]')[0]) + len(f'[{tail}]')) - 1, 
-
-                        (len(generated_seq) - len(generated_seq.split(f'[{tail}]')[-1]) - len(f'[{tail}]') + 1, 
-                        len(generated_seq) - len(generated_seq.split(f'[{tail}]')[-1]) - 1)])
-
+        head = f'\[{head}\]'
+        tail = f'\[{tail}\]'
+        head_position = [(m.start() + 1, m.start() + len(head) - 2) for m in re.finditer(head, generated_seq)]
+        tail_position = [(m.start() + 1, m.start() + len(tail) - 2) for m in re.finditer(tail, generated_seq)]
         return head_position, tail_position
         
 

@@ -1,3 +1,4 @@
+import pdb
 from typing import List, Tuple
 import torch 
 import torch.nn as nn
@@ -35,8 +36,124 @@ class GenOT(nn.Module):
         self.null_prob = null_prob
         self.n_selected_words = n_selected_words
         self.output_max_length = output_max_length
-        self.filler = nn.parameter.Parameter(torch.Tensor(self.hidden_size))
+        self.filler = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
         self.cos = nn.CosineSimilarity(dim=0)
+
+    def compute_performance_reward(self, predicted_seqs: List[str], gold_seqs: List[str], task: str):
+        if task == 'ECI':
+            n_predict = 0
+            n_gold = 0
+            tp = 0
+            wrong_struct = 0
+            for predict, gold in zip(predicted_seqs, gold_seqs):
+                if predict.startswith('No')==False and gold.startswith('No')==False:
+                    tp = tp + 1
+                if predict.startswith('No')==False:
+                    n_predict = n_predict + 1
+                if gold.startswith('No')==False:
+                    n_gold = n_gold + 1
+                if predict.startswith('Yes')==False and predict.startswith('No')==False:
+                    wrong_struct = wrong_struct + 1
+
+            if wrong_struct == len(predicted_seqs):
+                return -1.0
+            elif n_predict==n_gold==0:
+                return 0.1
+            else:
+                p = (tp + 1)/(n_predict + 1)
+                r = (tp + 1)/(n_gold + 1)
+                f1 = 2 * p * r / (p + r + 1e-9)
+                return f1
+    
+    @torch.no_grad()
+    def compute_preserving_event_in_predict_seq_reward(self, predicted_seq: str, trigger_emb, head_pos, tail_pos):
+        if len(head_pos) == 0 and len(tail_pos) == 0:
+            return -1.0
+
+        else:
+            input_ids = self.tokenizer([predicted_seq],
+                                    padding='longest',
+                                    truncation=True,
+                                    return_tensors="pt").input_ids
+            outputs = self.generator.encoder(input_ids=input_ids.cuda(), output_hidden_states=True)
+            outputs_last_hidden_state = outputs.last_hidden_state.squeeze()
+            # print(f"outputs_last_hidden_state: {outputs_last_hidden_state.size()}")
+
+            scores = []
+            if len(head_pos) != 0:
+                str_before_head = []
+                # print(head_pos)
+                head_str = predicted_seq[head_pos[0][0]: head_pos[0][1]]
+                for pos in head_pos:
+                    str_before_head.append(predicted_seq[: pos[0]])
+                num_head_subwords = len(self.tokenizer([head_str])['input_ids'][0]) - 1
+                num_subwords_before_head = [len(ids) - 1 for ids in self.tokenizer(str_before_head)['input_ids']]
+                head_subword_ids = [[x, x + num_head_subwords] for x in num_subwords_before_head] 
+                head_scores = []
+                for head_ids in head_subword_ids:
+                    head_emb = torch.max(outputs_last_hidden_state[head_ids[0]: head_ids[1]], dim=0)[0]
+                    # print(f"head_emb size: {head_emb.size()}")
+                    sim_score = self.cos(trigger_emb[0], head_emb)
+                    head_scores.append(float(sim_score))
+                head_score = sum(head_scores) / len(head_scores)
+                scores.append(head_score)
+                
+            for pos in tail_pos:
+                str_before_tail = []
+                tail_str = predicted_seq[tail_pos[0][0]: tail_pos[0][1]]
+                for pos in tail_pos:
+                    str_before_tail.append(predicted_seq[: pos[0]])
+                num_tail_subwords = len(self.tokenizer([tail_str])['input_ids'][0]) - 1
+                num_subwords_before_tail = [len(ids) - 1 for ids in self.tokenizer(str_before_tail)['input_ids']]
+                tail_subword_ids = [[x, x + num_tail_subwords] for x in num_subwords_before_tail] 
+                tail_scores = []
+                for tail_ids in tail_subword_ids:
+                    tail_emb = torch.max(outputs_last_hidden_state[tail_ids[0]: tail_ids[1]], dim=0)[0]
+                    # print(f"tail_emb size: {tail_emb.size()}")
+                    sim_score = self.cos(trigger_emb[1], tail_emb)
+                    tail_scores.append(float(sim_score))
+                tail_score = sum(tail_scores) / len(tail_scores)
+                scores.append(tail_score)
+            return sum(scores) / 2
+    
+    @torch.no_grad()
+    def compute_preserving_event_in_source_seq_reward(self, 
+                                                    trigger_embs, 
+                                                    head_sentences: List[str],
+                                                    head_pos_in_sent: List[Tuple[int, int]],
+                                                    tail_sentences: List[str],
+                                                    tail_pos_in_sent: List[Tuple[int, int]],):
+
+        bs = len(head_sentences)
+        head_str = [head_sentences[i][head_pos_in_sent[i][0]: head_pos_in_sent[i][1]] for i in range(bs)]
+        before_head_str = [head_sentences[i][: head_pos_in_sent[i][0]] for i in range(bs)]
+        tail_str = [tail_sentences[i][tail_pos_in_sent[i][0]: tail_pos_in_sent[i][1]] for i in range(bs)]
+        before_tail_str = [tail_sentences[i][: tail_pos_in_sent[i][0]] for i in range(bs)] 
+
+        num_head_subwords = [len(ids) - 1 for ids in self.tokenizer(head_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
+        num_tail_subwords = [len(ids) - 1 for ids in self.tokenizer(tail_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
+        num_before_head_subwords = [len(ids) - 1 for ids in self.tokenizer(before_head_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
+        num_before_tail_subwords = [len(ids) - 1 for ids in self.tokenizer(before_tail_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
+        head_subword_ids = [[num_before_head_subwords[i], num_before_head_subwords[i] + num_head_subwords[i]] for i in range(bs)]
+        tail_subword_ids = [[num_before_tail_subwords[i], num_before_tail_subwords[i] + num_tail_subwords[i]] for i in range(bs)]
+
+        head_inputs = self.tokenizer(head_sentences, return_tensors="pt", padding='longest')
+        tail_inputs = self.tokenizer(tail_sentences, return_tensors="pt", padding='longest')
+        head_outputs = self.generator.encoder(input_ids=head_inputs.input_ids.cuda(), output_hidden_states=True)
+        tail_outputs = self.generator.encoder(input_ids=tail_inputs.input_ids.cuda(), output_hidden_states=True)
+        head_ouputs_last_hidden_state = head_outputs.last_hidden_state
+        tail_ouputs_last_hidden_state = tail_outputs.last_hidden_state
+
+        score = []
+        for i in range(bs):
+            source_head_emb = torch.max(head_ouputs_last_hidden_state[i, head_subword_ids[i][0]: head_subword_ids[i][1]], dim=0)[0]
+            augmented_head_emb = trigger_embs[i][0]
+            score.append(float(self.cos(source_head_emb, augmented_head_emb)))
+
+            source_tail_emb = torch.max(tail_ouputs_last_hidden_state[i, tail_subword_ids[i][0]: tail_subword_ids[i][1]], dim=0)[0]
+            augmented_tail_emb = trigger_embs[i][1]
+            score.append(float(self.cos(source_tail_emb, augmented_tail_emb)))
+        return sum(score) / len(score)
     
     def identify_important_words(self, 
                                 contexts: List[str],
@@ -70,14 +187,14 @@ class GenOT(nn.Module):
             ns.append(len(sent_ids) - 1)
         max_ns = max(ns)
         padded_tokenized_input = [padding(sent_ids, max_sent_len=max_ns+1, pad_tok=self.tokenizer.pad_token_id) for sent_ids in tokenized_input]
-        padded_tokenized_input = torch.tensor(padded_tokenized_input)
+        padded_tokenized_input = torch.tensor(padded_tokenized_input).cuda()
         
         if self.finetune_in_OT:
             outputs = self.generator.encoder(input_ids=padded_tokenized_input, output_hidden_states=True)
             ouputs_last_hidden_state = outputs.last_hidden_state
 
             task_description_tokenized = self.tokenizer(task_description_words, return_tensors="pt", padding='longest')
-            task_description_embs = self.generator.encoder(input_ids=task_description_tokenized.input_ids, 
+            task_description_embs = self.generator.encoder(input_ids=task_description_tokenized.input_ids.cuda(), 
                                                             output_hidden_states=True)
             task_description_embs = torch.max(task_description_embs.last_hidden_state, dim=1)[0] # (n_words, hidden_size)
         else:
@@ -86,7 +203,7 @@ class GenOT(nn.Module):
                 ouputs_last_hidden_state = outputs.last_hidden_state
 
                 task_description_tokenized = self.tokenizer(task_description_words, return_tensors="pt", padding='longest')
-                task_description_embs = self.generator.encoder(input_ids=task_description_tokenized.input_ids, 
+                task_description_embs = self.generator.encoder(input_ids=task_description_tokenized.input_ids.cuda(), 
                                                                 output_hidden_states=True)
                 task_description_embs = torch.max(task_description_embs.last_hidden_state, dim=1)[0] # (n_words, hidden_size)
                 
@@ -98,13 +215,14 @@ class GenOT(nn.Module):
         trigger_embs = []
         for i in range(bs):
             _ns = ns[i]
-            trigger_id = list(range(head_subword_ids[0], head_subword_ids[1])) + list(range(tail_subword_ids[0], tail_subword_ids[1]))
+            trigger_id = list(range(head_subword_ids[i][0], head_subword_ids[i][1])) + list(range(tail_subword_ids[i][0], tail_subword_ids[i][1]))
             context_id = list(set(range(_ns)) - set(trigger_id))
             context_ids.append(context_id)
-
+        
+            trigger_id = list(set(trigger_id))
             trigger_emb = ouputs_last_hidden_state[i, trigger_id]
-            head_emb = torch.max(ouputs_last_hidden_state[i, list(range(head_subword_ids[0], head_subword_ids[1]))], dim=0)[0]
-            tail_emb = torch.max(ouputs_last_hidden_state[i, list(range(tail_subword_ids[0], tail_subword_ids[1]))], dim=0)[0]
+            head_emb = torch.max(ouputs_last_hidden_state[i, list(range(head_subword_ids[i][0], head_subword_ids[i][1]))], dim=0)[0]
+            tail_emb = torch.max(ouputs_last_hidden_state[i, list(range(tail_subword_ids[i][0], tail_subword_ids[i][1]))], dim=0)[0]
             trigger_embs.append([head_emb, tail_emb])
             context_emb = ouputs_last_hidden_state[i, context_id]
             null_presentation = torch.mean(context_emb, dim=0).unsqueeze(0)
@@ -116,16 +234,17 @@ class GenOT(nn.Module):
             X_maginal = [torch.tensor([self.null_prob]), (1 - self.null_prob) * X_maginal]
             X_maginal = torch.cat(X_maginal, dim=0)
             P_X.append(X_maginal)
-            Y_maginal = [min([idx - trigger_idx for trigger_idx in trigger_id]) for idx in context_id]
-            Y_maginal = torch.softmax(torch.tensor(Y_maginal)) # farer word, higher sample rate 
+            Y_maginal = [min([abs(idx - trigger_idx) for trigger_idx in trigger_id]) for idx in context_id]
+            Y_maginal = torch.tensor(Y_maginal, dtype=torch.float)
+            Y_maginal = F.softmax(Y_maginal) # farer word, higher sample rate 
             P_Y.append(Y_maginal)
             assert Y_maginal.size(0) == context_emb.size(0)
             assert X_maginal.size(0) == X_emb.size(0)
         
         X_presentations = pad_sequence(X_presentations, batch_first=True)
-        X_presentations = X_presentations * self.filler
+        X_presentations = self.filler(X_presentations)
         Y_presentations = pad_sequence(Y_presentations, batch_first=True)
-        Y_presentations = Y_presentations * self.filler
+        Y_presentations = self.filler(Y_presentations)
         P_X = pad_sequence(P_X, batch_first=True)
         P_Y = pad_sequence(P_Y, batch_first=True)
 
@@ -160,9 +279,8 @@ class GenOT(nn.Module):
         # for i in range(bs):
         #     selected_words[i].extend([(num_before_head_subwords[i], head_str), (num_before_tail_subwords[i], tail_str)])
         #==============================================================================================
-
         values, aligns = torch.max(pi, dim=1)
-        selected_words = [[]*bs]
+        selected_words = []
         mask = torch.zeros_like(pi)
         for i in range(bs):
             _selected_words_with_mapping = {}
@@ -179,138 +297,24 @@ class GenOT(nn.Module):
                             _selected_words_with_mapping[j] = (prob, mapping, j, selected_word)
                     else:
                         _selected_words_with_mapping[j] = (prob, mapping, j, selected_word)
+            _selected_words = []
             if self.n_selected_words != None:
-                sorted_by_prob = list(_selected_words_with_mapping.values()).sort(reverse=True)
+                sorted_by_prob = list(_selected_words_with_mapping.values())
+                sorted_by_prob.sort(key=lambda x: x[0], reverse=True)
                 for item in sorted_by_prob[:self.n_selected_words]:
-                    selected_words[i].append(item[-1])
+                    _selected_words.append(item[-1])
                     indicate = item[1]
                     mask[indicate[0], indicate[1], indicate[2]] = 1
             else:
-                for item in sorted_by_prob:
-                    selected_words[i].append(item[-1])
+                for item in _selected_words_with_mapping.values():
+                    _selected_words.append(item[-1])
                     indicate = item[1]
                     mask[indicate[0], indicate[1], indicate[2]] = 1
-            selected_words[i].extend([(num_before_head_subwords[i], head_str), (num_before_tail_subwords[i], tail_str)])
-        
-        log_probs = torch.sum(torch.log(pi * mask).view((bs, -1)), dim=-1)
-
+            _selected_words.extend([(num_before_head_subwords[i], head_str[i]), (num_before_tail_subwords[i], tail_str[i])])
+            selected_words.append(_selected_words)
+        log_probs = torch.sum((torch.log(pi + 1e-10) * mask).view((bs, -1)), dim=-1)
         return cost, torch.mean(log_probs, dim=0), selected_words, trigger_embs, num_before_head_subwords, num_before_tail_subwords
-        
-    def compute_performance_reward(self, predicted_seqs: List[str], gold_seqs: List[str], task: str):
-        if task == 'ECI':
-            n_predict = 0
-            n_gold = 0
-            tp = 0
-            wrong_struct = 0
-            for predict, gold in zip(predicted_seqs, gold_seqs):
-                if predict.startswith('No')==False and gold.startswith('No')==False:
-                    tp = tp + 1
-                if predict.startswith('No')==False:
-                    n_predict = n_predict + 1
-                if gold.startswith('No')==False:
-                    n_gold = n_gold + 1
-                if predict.startswith('Yes')==False and predict.startswith('No')==False:
-                    wrong_struct = wrong_struct + 1
 
-            if wrong_struct == len(predicted_seqs):
-                return 0.0
-            elif n_predict==n_gold==0:
-                return 0.1
-            else:
-                p = (tp + 1)/(n_predict + 1)
-                r = (tp + 1)/(n_gold + 1)
-                f1 = 2 * p * r / (p + r + 1e-9)
-                return f1
-    
-    @torch.no_grad()
-    def compute_preserving_event_in_predict_seq_reward(self, predicted_seq: str, trigger_emb, head_pos, tail_pos):
-        if len(head_pos) == 0 and len(tail_pos) == 0:
-            return 0.0
-
-        else:
-            input_ids = self.tokenizer([predicted_seq],
-                                    padding='longest',
-                                    truncation=True,
-                                    return_tensors="pt")
-            outputs = self.generator.encoder(input_ids=input_ids, output_hidden_states=True)
-            outputs_last_hidden_state = outputs.last_hidden_state.sqeeze()
-            print(f"outputs_last_hidden_state: {outputs_last_hidden_state.size()}")
-
-            scores = []
-            if len(head_pos) != 0:
-                str_before_head = []
-                head_str = predicted_seq[head_pos[0][0]: head_pos[0][1]]
-                for pos in head_pos:
-                    str_before_head.append(predicted_seq[: pos[0]])
-                num_head_subwords = len(self.tokenizer([head_str])['input_ids'][0]) - 1
-                num_subwords_before_head = [len(ids) - 1 for ids in self.tokenizer(str_before_head)['input_ids']]
-                head_subword_ids = [[x, x + num_head_subwords] for x in num_subwords_before_head] 
-                head_scores = []
-                for head_ids in head_subword_ids:
-                    head_emb = torch.max(outputs_last_hidden_state[head_ids[0]: head_ids[1]], dim=0)[0]
-                    print(f"head_emb size: {head_emb.size()}")
-                    sim_score = self.cos(trigger_emb[0], head_emb)
-                    head_scores.append(float(sim_score))
-                head_score = sum(head_scores) / len(head_scores)
-                scores.append(head_score)
-                
-            for pos in tail_pos:
-                str_before_tail = []
-                tail_str = predicted_seq[tail_pos[0][0]: tail_pos[0][1]]
-                for pos in tail_pos:
-                    str_before_tail.append(predicted_seq[: pos[0]])
-                num_tail_subwords = len(self.tokenizer([tail_str])['input_ids'][0]) - 1
-                num_subwords_before_tail = [len(ids) - 1 for ids in self.tokenizer(str_before_tail)['input_ids']]
-                tail_subword_ids = [[x, x + num_tail_subwords] for x in num_subwords_before_tail] 
-                tail_scores = []
-                for tail_ids in tail_subword_ids:
-                    tail_emb = torch.max(outputs_last_hidden_state[tail_ids[0]: tail_ids[1]], dim=0)[0]
-                    print(f"tail_emb size: {tail_emb.size()}")
-                    sim_score = self.cos(trigger_emb[1], tail_emb)
-                    tail_scores.append(float(sim_score))
-                tail_score = sum(tail_scores) / len(tail_scores)
-                scores.append(tail_score)
-            return sum(scores) / 2
-    
-    @torch.no_grad()
-    def compute_preserving_event_in_source_seq_reward(self, 
-                                                    trigger_embs, 
-                                                    head_sentences: List[str],
-                                                    head_pos_in_sent: List[Tuple[int, int]],
-                                                    tail_sentences: List[str],
-                                                    tail_pos_in_sent: List[Tuple[int, int]],):
-
-        bs = len(head_sentences)
-        head_str = [head_sentences[i][head_pos_in_sent[i][0]: head_pos_in_sent[i][1]] for i in range(bs)]
-        before_head_str = [head_sentences[i][: head_pos_in_sent[i][0]] for i in range(bs)]
-        tail_str = [tail_sentences[i][tail_pos_in_sent[i][0]: tail_pos_in_sent[i][1]] for i in range(bs)]
-        before_tail_str = [tail_sentences[i][: tail_pos_in_sent[i][0]] for i in range(bs)] 
-
-        num_head_subwords = [len(ids) - 1 for ids in self.tokenizer(head_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
-        num_tail_subwords = [len(ids) - 1 for ids in self.tokenizer(tail_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
-        num_before_head_subwords = [len(ids) - 1 for ids in self.tokenizer(before_head_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
-        num_before_tail_subwords = [len(ids) - 1 for ids in self.tokenizer(before_tail_str)['input_ids']] # "- 1" means ignoring the </s> in the last 
-        head_subword_ids = [[num_before_head_subwords[i], num_before_head_subwords[i] + num_head_subwords[i]] for i in range(bs)]
-        tail_subword_ids = [[num_before_tail_subwords[i], num_before_tail_subwords[i] + num_tail_subwords[i]] for i in range(bs)]
-
-        head_inputs = self.tokenizer(head_sentences, return_tensors="pt", padding='longest')
-        tail_inputs = self.tokenizer(tail_sentences, return_tensors="pt", padding='longest')
-        head_outputs = self.generator.encoder(input_ids=head_inputs.input_ids, output_hidden_states=True)
-        tail_outputs = self.generator.encoder(input_ids=tail_inputs.input_ids, output_hidden_states=True)
-        head_ouputs_last_hidden_state = head_outputs.last_hidden_state
-        tail_ouputs_last_hidden_state = tail_outputs.last_hidden_state
-
-        score = []
-        for i in range(bs):
-            source_head_emb = torch.max(head_ouputs_last_hidden_state[i, head_subword_ids[0]: head_subword_ids[1]], dim=0)
-            augmented_head_emb = trigger_embs[i][0]
-            score.append(float(self.cos(source_head_emb, augmented_head_emb)))
-
-            source_tail_emb = torch.max(tail_ouputs_last_hidden_state[i, tail_subword_ids[0]: tail_subword_ids[1]], dim=0)
-            augmented_tail_emb = trigger_embs[i][1]
-            score.append(float(self.cos(source_tail_emb, augmented_tail_emb)))
-        return sum(score) / len(score)
-    
     def forward(self,
                 task: str,
                 input_format_type: str,
@@ -346,7 +350,7 @@ class GenOT(nn.Module):
         for i in range(bs):
             input_txt, head_str, tail_str = input_formater.format_input(context=contexts[i], head_position=head_positions[i], tail_position=tail_positions[i])
             inputs.append(input_txt)
-            outpt = output_formater.format_output(important_wordsList=selected_words, head=head_str, tail=tail_str, label=labels[i],
+            outpt = output_formater.format_output(important_words=selected_words[i], head=head_str, tail=tail_str, label=labels[i],
                                                 num_before_head_subword=num_before_head_subwords[i], 
                                                 num_before_tail_subword=num_before_tail_subwords[i])
             outputs.append(outpt)
@@ -367,12 +371,12 @@ class GenOT(nn.Module):
 
             model_output = self.generator(input_ids=input_encoded.input_ids.cuda(), 
                                         attention_mask=input_encoded.attention_mask.cuda(), 
-                                        labels=output_ids,
+                                        labels=output_ids.cuda(),
                                         output_hidden_states=True)
             
             mle_loss = model_output.loss
             logits = model_output.logits
-            predicted_seq = torch.max(logits, dim=2)[1] * output_encoded.attention_mask # this means model only concern about the true output. 
+            predicted_seq = torch.max(logits, dim=2)[1] * output_encoded.attention_mask.cuda() # this means model only concern about the true output. 
             predicted_seq = self.tokenizer.batch_decode(predicted_seq, skip_special_tokens=True)
         else:
             mle_loss = 0.0
@@ -380,8 +384,8 @@ class GenOT(nn.Module):
                                         padding='longest',
                                         truncation=True,
                                         return_tensors="pt")
-            predicted_seq = self.generator.generate(input_ids=input_encoded['input_ids'],
-                                                    attention_mask=input_encoded['attention_mask'],
+            predicted_seq = self.generator.generate(input_ids=input_encoded['input_ids'].cuda(),
+                                                    attention_mask=input_encoded['attention_mask'].cuda(),
                                                     do_sample=False, # disable sampling to test if batching affects output
                                                     top_k=20, 
                                                     top_p=0.95, 
@@ -405,7 +409,6 @@ class GenOT(nn.Module):
                                                                                             head_pos_in_sent=head_pos_in_sent,
                                                                                             tail_sentences=tail_sentences,
                                                                                             tail_pos_in_sent=tail_pos_in_sent)
-
         return cost, log_probs, mle_loss, predicted_seq, outputs, performance_reward, preserving_event_reward, prereseving_source_event_reward
 
 

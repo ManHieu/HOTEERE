@@ -3,6 +3,7 @@ from collections import defaultdict
 import pickle
 import json
 import os
+from pprint import pprint
 from data_modules.retriever import AtomicRetriever, ConceptNetRetriever
 from data_modules.utils import sentence_encode
 from sklearn.model_selection import KFold, train_test_split
@@ -108,8 +109,6 @@ class Preprocessor(object):
         if type(corpus) == list:
             processed_corpus = []
             for my_dict in tqdm.tqdm(corpus):
-                len_doc = sum([len(sentence['tokens']) for sentence in my_dict['sentences']])
-                doc_info = True
                 processed_corpus.extend(get_datapoint(self.datapoint, my_dict))
             if save_path != None and save_cache == True:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -119,8 +118,6 @@ class Preprocessor(object):
             processed_corpus = defaultdict(list)
             for key, topic in corpus.items():
                 for my_dict in tqdm.tqdm(topic):
-                    len_doc = sum([len(sentence['tokens']) for sentence in my_dict['sentences']])
-                    doc_info = True
                     processed_corpus[key].extend(get_datapoint(self.datapoint, my_dict))
             if save_path != None and save_cache == True:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -148,14 +145,14 @@ def load(dataset: str, save_cache=False):
         train, validate = train_test_split(train, train_size=80.0/100., test_size=20.0/100, random_state=seed)
 
         processed_path = 'datasets/hievents_v2/train.json'
-        train = processor.process_and_save(train, processed_path, save_cache)
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
 
         processed_path = 'datasets/hievents_v2/val.json'
-        val = processor.process_and_save(validate, processed_path, save_cache)
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
 
         processed_path = 'datasets/hievents_v2/test.json'
-        test = processor.process_and_save(test, processed_path, save_cache)
-        return {0: [train, val, test]}
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
     
     if dataset == 'IC':
         datapoint = 'hoteere_data_point'
@@ -173,14 +170,14 @@ def load(dataset: str, save_cache=False):
         validate = [doc for doc in corpus if doc['doc_id'] in val_doc_id]
 
         processed_path = 'datasets/IC/train.json'
-        train = processor.process_and_save(train, processed_path, save_cache)
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
 
         processed_path = 'datasets/IC/val.json'
-        val = processor.process_and_save(validate, processed_path, save_cache)
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
 
         processed_path = 'datasets/IC/test.json'
-        test = processor.process_and_save(test, processed_path, save_cache)
-        return {0: [train, val, test]}
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
    
     if dataset == 'ESL':
         datapoint = 'hoteere_data_point'
@@ -217,14 +214,14 @@ def load(dataset: str, save_cache=False):
             validate = [_train[id] for id in valid_ids]
         
             processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
-            train = processor.process_and_save(train, processed_path, save_cache)
+            processed_train = processor.process_and_save(train, processed_path, save_cache)
 
             processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-            val = processor.process_and_save(validate, processed_path, save_cache)
+            processed_val = processor.process_and_save(validate, processed_path, save_cache)
             
             processed_path = f"./datasets/EventStoryLine/{fold}/val.json"
-            test = processor.process_and_save(test, processed_path, save_cache)
-            folds[fold] = [train, val, test]
+            processed_test = processor.process_and_save(test, processed_path, save_cache)
+            folds[fold] = [processed_train, processed_val, processed_test]
         return folds
     
     if dataset == 'Causal-TB':
@@ -247,12 +244,12 @@ def load(dataset: str, save_cache=False):
             validate = [corpus[id] for id in valid_ids]
         
             processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
-            train = processor.process_and_save(train, processed_path, save_cache)
+            processed_train = processor.process_and_save(train, processed_path, save_cache)
 
             processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-            val = processor.process_and_save(validate, processed_path, save_cache)
+            processed_val = processor.process_and_save(validate, processed_path, save_cache)
             
-            folds[fold] = [train, val, val]
+            folds[fold] = [processed_train, processed_val, processed_val]
         return folds
 
     if dataset == 'MATRES':
@@ -261,19 +258,19 @@ def load(dataset: str, save_cache=False):
         timebank_dir_name = "./datasets/MATRES/TBAQ-cleaned/TimeBank/"
         platinum_dir_name = "./datasets/MATRES/te3-platinum/"
         processor = Preprocessor(dataset, datapoint)
-        validate = Preprocessor.load_dataset(aquaint_dir_name)
-        train = Preprocessor.load_dataset(timebank_dir_name)
-        test = Preprocessor.load_dataset(platinum_dir_name)
+        validate = processor.load_dataset(dir_name=aquaint_dir_name)
+        train = processor.load_dataset(dir_name=timebank_dir_name)
+        test = processor.load_dataset(dir_name=platinum_dir_name)
 
         processed_path = 'datasets/MATRES/train.json'
-        train = processor.process_and_save(train, processed_path, save_cache)
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
 
         processed_path = 'datasets/MATRES/val.json'
-        val = processor.process_and_save(validate, processed_path, save_cache)
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
 
         processed_path = 'datasets/MATRES/test.json'
-        test = processor.process_and_save(test, processed_path, save_cache)
-        return {0: [train, val, test]}
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
 
     print(f"We have not supported {dataset} dataset!")
     return None

@@ -5,3 +5,4 @@ article-1526.tsvx.json
 draft*
 trankit/*
 *__pycache__*
+lightning_logs/*

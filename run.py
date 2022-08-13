@@ -118,10 +118,14 @@ def run(defaults: Dict):
             max_epochs=training_args.num_epoches, 
             gpus=[args.gpu], 
             accumulate_grad_batches=training_args.gradient_accumulation_steps,
-            num_sanity_val_steps=2, 
+            num_sanity_val_steps=0, 
             val_check_interval=1.0, # use float to check every n epochs 
             callbacks = [lr_logger, checkpoint_callback],
         )
+
+        print("Training....")
+        dm.setup('fit')
+        trainer.fit(model, dm)
 
         best_model = HOTEERE.load_from_checkpoint(checkpoint_callback.best_model_path)
         print("Testing .....")
@@ -153,19 +157,20 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
+        'num_epoches': trial.suggest_categorical('num_epoches', [5, 10, 15, 20]),
+        'batch_size': trial.suggest_categorical('batch_size', [2]),
         'weight_source_perserve_ev_reward': trial.suggest_categorical('weight_source_perserve_ev_reward', [0.05, 0.1, 0.2]),
         'weight_gen_perserve_ev_reward': trial.suggest_categorical('weight_gen_perserve_ev_reward', [0.05, 0.1, 0.2]),
         'weight_sent_diversity_reward': trial.suggest_categorical('weight_sent_diversity_reward', [0.05, 0.1, 0.2]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.5, 0.75, 0.9]),
-        'num_epoches': trial.suggest_categorical('num_epoches', [5, 10, 15, 20]),
         'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3]),
         'generator_lr': trial.suggest_categorical('generator_lr', [5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.5, 0.25]),
-        'kg_weight': trial.suggest_categorical('num_epoches', [0.5, 0.25, 0.1]),
-        'null_sentence_prob': trial.suggest_categorical('null_sentence_prob', [0.5, 0.75, 0.8]),
-        'null_word_prob': trial.suggest_categorical('null_word_prob', [0.5, 0.75, 0.8]),
-        'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
-        'n_selected_words': trial.suggest_categorical('n_selected_words', [None]),
+        'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
+        'null_sentence_prob': trial.suggest_categorical('null_sentence_prob', [0.75]),
+        'null_word_prob': trial.suggest_categorical('null_word_prob', [0.95]),
+        'n_selected_sents': trial.suggest_categorical('n_selected_sents', [2]),
+        'n_selected_words': trial.suggest_categorical('n_selected_words', [10]),
         'output_max_length': trial.suggest_categorical('output_max_length', [64]),
         'finetune_selector_encoder': trial.suggest_categorical('finetune_selector_encoder', [True]),
         'finetune_in_OT_generator': trial.suggest_categorical('finetune_in_OT_generator', [True]),

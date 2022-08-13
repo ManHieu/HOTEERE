@@ -1,4 +1,6 @@
 from collections import defaultdict
+from math import cos
+import pdb
 from typing import List
 import torch
 import torch.nn as nn 
@@ -21,6 +23,7 @@ class SentenceSelectOT(nn.Module):
                 encoder_name_or_path: str = 't5-base',
                 tokenizer_name_or_path: str = 't5-base',
                 n_selected_sents: int = 5,
+                use_rnn: bool = False,
                 ):
         super().__init__()
         self.finetune = finetune
@@ -30,9 +33,9 @@ class SentenceSelectOT(nn.Module):
             self.hidden_size = 768 if 'base' in encoder_name_or_path else 1024
         else:
             self.hidden_size = hidden_size
+        self.use_rnn = use_rnn
 
-        self.filler = nn.parameter.Parameter(torch.Tensor(self.hidden_size))
-        nn.init.xavier_uniform_(tensor=self.filler.data, gain=nn.init.calculate_gain('relu'))
+        self.filler = nn.Linear(self.hidden_size, self.hidden_size)
 
         self.sinkhorn = SinkhornDistance(eps=OT_eps, max_iter=OT_max_iter, reduction=OT_reduction)
         self.null_prob = null_prob
@@ -50,12 +53,17 @@ class SentenceSelectOT(nn.Module):
     @torch.no_grad()
     def compute_sentence_diversity_reward(self, host_sent_embs, selected_sent_embs):
         reward = []
+        assert len(host_sent_embs) == len(selected_sent_embs)
         for host_emb, selected_emb in zip(host_sent_embs, selected_sent_embs):
-            _reward = []
-            for i in range(host_emb.size(0)):
-                cos_distance = 1 - self.cos(host_emb[i].unsqueeze(0), selected_emb)
-                _reward.append(float(torch.sum(cos_distance)) / cos_distance.size(1))
-            reward.append(sum(_reward) / len(_reward))
+            if len(selected_emb) != 0:
+                _reward = []
+                selected_emb = torch.stack(selected_emb)
+                for i in range(host_emb.size(0)):
+                    cos_distance = 1 - self.cos(host_emb[i].unsqueeze(0), selected_emb)
+                    _reward.append(float(torch.sum(cos_distance)) / cos_distance.size(-1))
+                reward.append(sum(_reward) / len(_reward))
+            else:
+                reward.append(0.1)
         return sum(reward) / len(reward)
 
     def forward(self,
@@ -68,25 +76,29 @@ class SentenceSelectOT(nn.Module):
                 is_training: bool = True):
         """
         [x]TODO: Add a trainabel filler which will dot product with embedding of X and Y to get new embedding vetor before feed them into Optimal Transport
-        TODO: Softmax instead of softmin (encourage sample farer sentence?)
+        TODO: Softmin instead of softmax (encourage sample farer sentence?)
         TODO: Consider chossing k sentences as k consecutive actions 
+        TODO: Filler is a (1, hidden_size) tensor instead of linear
         """
         bs = len(host_ids)
         if self.finetune == True:
             doc_embs = []
             kg_sent_embs = []
             for i in range(bs):
-                doc_input_ids = self.tokenizer(['</s>' + sent for sent in doc_sentences[i]], return_tensors="pt").input_ids
-                doc_outputs = self.encoder(input_ids=doc_input_ids)
-                print(f"doc_outputs size: {doc_outputs.last_hidden_state.size()}")
+                doc_input_ids = self.tokenizer(['</s>' + sent for sent in doc_sentences[i]], 
+                                            return_tensors="pt", 
+                                            padding='longest',
+                                            truncation=True,
+                                            ).input_ids
+                doc_outputs = self.encoder(input_ids=doc_input_ids.cuda())
                 doc_embs.append(doc_outputs.last_hidden_state[:, 0])
-                print(f"doc_outputs size: {doc_outputs.last_hidden_state[:, 0].size()}")
 
-                kg_input_ids = self.tokenizer(['</s>' + sent for sent in kg_sents[i]], return_tensors="pt").input_ids
-                kg_outputs = self.encoder(input_ids=kg_input_ids)
-                print(f"kg_outputs size: {kg_outputs.last_hidden_state.size()}")
+                kg_input_ids = self.tokenizer(['</s>' + sent for sent in kg_sents[i]], 
+                                            return_tensors="pt",
+                                            padding='longest',
+                                            truncation=True,).input_ids
+                kg_outputs = self.encoder(input_ids=kg_input_ids.cuda())
                 kg_sent_embs.append(kg_outputs.last_hidden_state[:, 0])
-                print(f"kg_outputs size: {kg_outputs.last_hidden_state[:, 0].size()}")
 
         ns = [doc_emb.size(0) for doc_emb in doc_embs]
         n_kg_sent = [kg_sent_emb.size(0) for kg_sent_emb in kg_sent_embs]
@@ -94,10 +106,8 @@ class SentenceSelectOT(nn.Module):
             doc_embs = pad_sequence(doc_embs, batch_first=True)
             doc_embs = self.encode_with_rnn(doc_embs, ns)
         else:
-            doc_embs = torch.stack(doc_embs, dim=0)
-        kg_sent_embs = torch.stack(kg_sent_embs, dim=0)
-        print(f"doc emb size: {doc_embs.size()}")
-        print(f"kg sent emb size: {kg_sent_embs.size()}")
+            doc_embs = pad_sequence(doc_embs, batch_first=True)
+        kg_sent_embs = pad_sequence(kg_sent_embs, batch_first=True)
         doc_embs = self.dropout(doc_embs)
         kg_sent_embs = self.dropout(kg_sent_embs)
         
@@ -113,16 +123,14 @@ class SentenceSelectOT(nn.Module):
             host_id = host_ids[i]
             context_id = list(set(range(_ns)) - set(host_id))
             context_ids.append(context_id)
-            
+            host_id = list(set(host_id))
             host_sentences_emb = doc_embs[i, host_id]
             host_embs.append(host_sentences_emb)
             context_sentences_emb = doc_embs[i, context_id]
             null_presentation = torch.mean(context_sentences_emb, dim=0).unsqueeze(0)
             X_emb = torch.cat([null_presentation, host_sentences_emb], dim=0)
             X_presentations.append(X_emb)
-            print(f"ctx_emb before add kg: {context_sentences_emb.size()}")
-            context_sentences_emb = torch.cat([context_sentences_emb, kg_sent_embs[i]], dim=0)
-            print(f"ctx_emb after add kg: {context_sentences_emb.size()}")
+            context_sentences_emb = torch.cat([context_sentences_emb, kg_sent_embs[i, 0:_n_kg_sent]], dim=0)
             Y_presentations.append(context_sentences_emb)
 
             X_maginal = torch.tensor([1.0 / len(host_id)] * len(host_id), dtype=torch.float)
@@ -131,7 +139,7 @@ class SentenceSelectOT(nn.Module):
             P_X.append(X_maginal)
             context_score = context_sentences_scores[i]
             Y_maginal = torch.tensor(context_score, dtype=torch.float)
-            Y_maginal = F.softmin(Y_maginal) # closer sentence, higher sample rate 
+            Y_maginal = F.softmax(Y_maginal) # farer sentence, higher sample rate 
             Y_maginal = torch.cat([Y_maginal * (1.0 - self.kg_weight), self.kg_weight * torch.tensor([1.0 / _n_kg_sent] * _n_kg_sent, dtype=torch.float)], 
                                 dim=0)
             P_Y.append(Y_maginal)
@@ -139,9 +147,9 @@ class SentenceSelectOT(nn.Module):
             assert X_maginal.size(0) == X_emb.size(0)
 
         X_presentations = pad_sequence(X_presentations, batch_first=True)
-        X_presentations = X_presentations * self.filler
+        X_presentations = self.filler(X_presentations)
         Y_presentations = pad_sequence(Y_presentations, batch_first=True)
-        Y_presentations = Y_presentations * self.filler
+        Y_presentations = self.filler(Y_presentations)
         P_X = pad_sequence(P_X, batch_first=True)
         P_Y = pad_sequence(P_Y, batch_first=True)
 
@@ -179,8 +187,8 @@ class SentenceSelectOT(nn.Module):
         #                 selected_sents[j].append((9999, kg_sent)) # this means we put kg sent in the tail of the augmented doc
         #========================================================================================================
         values, aligns = torch.max(pi, dim=1)
-        selected_sents = [[]*bs]
-        selected_sent_embs = [[]*bs]
+        selected_sents = []
+        selected_sent_embs = []
         mask = torch.zeros_like(pi)
         for i in range(bs):
             _selected_sents_with_mapping = {}
@@ -204,22 +212,27 @@ class SentenceSelectOT(nn.Module):
                             _selected_sents_with_mapping[j] = (prob, mapping, j, selected_sent_emb, selected_sent)
                     else:
                         _selected_sents_with_mapping[j] = (prob, mapping, j, selected_sent_emb, selected_sent)
-
+            
+            _selected_sents = []
+            _selected_sent_embs = []
             if self.n_selected_sents != None:
-                sorted_by_prob = list(_selected_sents_with_mapping.values()).sort(key=lambda x: x[0], reverse=True)
+                sorted_by_prob = list(_selected_sents_with_mapping.values())
+                sorted_by_prob.sort(key=lambda x: x[0], reverse=True)
                 for item in sorted_by_prob[:self.n_selected_sents]:
-                    selected_sents[i].append(item[-1])
-                    selected_sent_embs[i].append(item[-2])
+                    _selected_sents.append(item[-1])
+                    _selected_sent_embs.append(item[-2])
                     indicate = item[1]
                     mask[indicate[0], indicate[1], indicate[2]] = 1
             else:
-                for item in sorted_by_prob:
-                    selected_sents[i].append(item[-1])
-                    selected_sent_embs[i].append(item[-2])
+                for item in _selected_sents_with_mapping.values():
+                    _selected_sents.append(item[-1])
+                    _selected_sent_embs.append(item[-2])
                     indicate = item[1]
                     mask[indicate[0], indicate[1], indicate[2]] = 1
+            selected_sents.append(_selected_sents)
+            selected_sent_embs.append(_selected_sent_embs)
         
-        log_probs = torch.sum(torch.log(pi * mask).view((bs, -1)), dim=-1)
+        log_probs = torch.sum((torch.log(pi + 1e-10) * mask).view((bs, -1)), dim=-1)
         sentence_diversity_reward = self.compute_sentence_diversity_reward(host_sent_embs=host_embs, selected_sent_embs=selected_sent_embs)
         return cost, torch.mean(log_probs, dim=0), selected_sents, sentence_diversity_reward
 

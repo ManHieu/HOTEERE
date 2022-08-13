@@ -9,7 +9,7 @@ import torch
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
 
-from data_modules.input_example import InputExample, InputFeature
+from data_modules.input_example import InputExample
 
 
 class BaseDataset(Dataset, ABC):
@@ -57,5 +57,10 @@ class BaseDataset(Dataset, ABC):
         Compute features for model 
         """
         return examples
+    
+
+    def my_collate(self, batch: List[InputExample]):
+        return batch
+
 
         

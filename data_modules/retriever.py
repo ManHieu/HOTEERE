@@ -141,13 +141,17 @@ class ConceptNetRetriever(object):
         # self.p = Pipeline('english', cache_dir='./trankit')
         self.seq_emb_cache = {}
     
-    def retrieve_from_conceptnet(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=3):
+    def retrieve_from_conceptnet(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=5):
         k_hop_seq = ' '.join(input_seq)
         event_mention = [input_seq[idx] for idx in trigger_token_id]
         lemmatized_mention = []
         knowledge_sents = []
         for event in ['_'.join(event_mention), '_'.join(lemmatized_mention)]:
-            obj = requests.get('http://api.conceptnet.io/c/en/' + event).json()
+            try:
+                obj = requests.get('http://api.conceptnet.io/c/en/' + event).json()
+            except:
+                print(f"Cannot retrieve {event} from ConceptNet!")
+                continue
             for e in obj['edges']:
                 # print(e)
                 if e['start'].get('language') == 'en' and e['end'].get('language') == 'en':

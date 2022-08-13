@@ -1,4 +1,5 @@
 from itertools import combinations
+import pdb
 from typing import Any, List, Optional, Tuple
 import torch
 import torch.nn as nn
@@ -113,8 +114,9 @@ class HOTEERE(pl.LightningModule):
                 context.append(s[1])
                 if s[0] < ex.triggers[0].sent_id:
                     sent_before_head.append(s[1])
-                elif s[0] < ex.triggers[1].sent_id:
+                if s[0] < ex.triggers[1].sent_id:
                     sent_before_tail.append(s[1])
+            context = ' '.join(context)
 
             head_sentence = ex.context[ex.relations[0].head.sent_id]
             tail_sentence = ex.context[ex.relations[0].tail.sent_id]
@@ -125,15 +127,17 @@ class HOTEERE(pl.LightningModule):
             tail_sentences.append(tail_sentence)
             tail_pos_in_sent.append(_tail_pos_in_sent)
 
-            contexts.append(' '.join(context))
+            contexts.append(context)
             len_before_head_sent = len(' '.join(sent_before_head)) + 1 if len(sent_before_head) != 0 else 0 # space
             len_before_tail_sent = len(' '.join(sent_before_tail)) + 1 if len(sent_before_tail) != 0 else 0 # space
             head_position = (ex.triggers[0].start_char_in_sent + len_before_head_sent, ex.triggers[0].end_char_in_sent + len_before_head_sent)
             tail_position = (ex.triggers[1].start_char_in_sent + len_before_tail_sent, ex.triggers[1].end_char_in_sent + len_before_tail_sent)
             head_positions.append(head_position)
             tail_positions.append(tail_position)
-            assert context[head_position[0]: head_position[1]] == head_sentence[_head_pos_in_sent[0]: _head_pos_in_sent[1]]
-            assert context[tail_position[0]: tail_position[1]] == tail_sentence[_tail_pos_in_sent[0]: _tail_pos_in_sent[1]]
+            assert context[head_position[0]: head_position[1]] == head_sentence[_head_pos_in_sent[0]: _head_pos_in_sent[1]], \
+            f"{context[head_position[0]: head_position[1]]} == {head_sentence[_head_pos_in_sent[0]: _head_pos_in_sent[1]] - {context}}"
+            assert context[tail_position[0]: tail_position[1]] == tail_sentence[_tail_pos_in_sent[0]: _tail_pos_in_sent[1]], \
+            f"{context[tail_position[0]: tail_position[1]]} == {tail_sentence[_tail_pos_in_sent[0]: _tail_pos_in_sent[1]]} - {context}"
             labels.append(ex.relations[0].type.natural)
 
         return contexts, head_positions, tail_positions, labels, head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent
