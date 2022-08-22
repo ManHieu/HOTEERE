@@ -14,7 +14,7 @@ class SentenceSelectOT(nn.Module):
     def __init__(self,
                 hidden_size: int,
                 OT_eps: float = 0.1,
-                OT_max_iter: int = 100,
+                OT_max_iter: int = 50,
                 OT_reduction: str = 'mean',
                 dropout: float = 0.5,
                 null_prob: float = 0.5,

@@ -127,7 +127,7 @@ class Preprocessor(object):
         return processed_corpus
 
 
-def load(dataset: str, save_cache=False):
+def load(dataset: str, load_fold: int=0, save_cache=False):
     seed = 7890
     import torch
     torch.manual_seed(seed)
@@ -204,24 +204,25 @@ def load(dataset: str, save_cache=False):
         random.shuffle(_train)
         folds = {}
         for fold, (train_ids, valid_ids) in enumerate(kfold.split(_train)):
-            try:
-                os.mkdir(f"./datasets/EventStoryLine/{fold}")
-            except FileExistsError:
-                pass
+            if fold == load_fold:
+                try:
+                    os.mkdir(f"./datasets/EventStoryLine/{fold}")
+                except FileExistsError:
+                    pass
 
-            train = [_train[id] for id in train_ids]
-            # print(train[0])
-            validate = [_train[id] for id in valid_ids]
-        
-            processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
-            processed_train = processor.process_and_save(train, processed_path, save_cache)
-
-            processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-            processed_val = processor.process_and_save(validate, processed_path, save_cache)
+                train = [_train[id] for id in train_ids]
+                # print(train[0])
+                validate = [_train[id] for id in valid_ids]
             
-            processed_path = f"./datasets/EventStoryLine/{fold}/val.json"
-            processed_test = processor.process_and_save(test, processed_path, save_cache)
-            folds[fold] = [processed_train, processed_val, processed_test]
+                processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
+                processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+                processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
+                processed_val = processor.process_and_save(validate, processed_path, save_cache)
+                
+                processed_path = f"./datasets/EventStoryLine/{fold}/val.json"
+                processed_test = processor.process_and_save(test, processed_path, save_cache)
+                folds[fold] = [processed_train, processed_val, processed_test]
         return folds
     
     if dataset == 'Causal-TB':
@@ -234,22 +235,23 @@ def load(dataset: str, save_cache=False):
         random.shuffle(corpus)
         folds = {}
         for fold, (train_ids, valid_ids) in enumerate(kfold.split(corpus)):
-            try:
-                os.mkdir(f"./datasets/EventStoryLine/{fold}")
-            except FileExistsError:
-                pass
+            if fold==load_fold:
+                try:
+                    os.mkdir(f"./datasets/EventStoryLine/{fold}")
+                except FileExistsError:
+                    pass
 
-            train = [corpus[id] for id in train_ids]
-            # print(train[0])
-            validate = [corpus[id] for id in valid_ids]
-        
-            processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
-            processed_train = processor.process_and_save(train, processed_path, save_cache)
-
-            processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-            processed_val = processor.process_and_save(validate, processed_path, save_cache)
+                train = [corpus[id] for id in train_ids]
+                # print(train[0])
+                validate = [corpus[id] for id in valid_ids]
             
-            folds[fold] = [processed_train, processed_val, processed_val]
+                processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
+                processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+                processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
+                processed_val = processor.process_and_save(validate, processed_path, save_cache)
+                
+                folds[fold] = [processed_train, processed_val, processed_val]
         return folds
 
     if dataset == 'MATRES':

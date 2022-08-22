@@ -20,32 +20,42 @@ class EEREDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.data_dir = data_dir
         self.fold = fold
-        self.dataset = load_dataset(name=self.data_name,
-                                    data_dir=self.data_dir)
     
     def train_dataloader(self):
+        dataset = load_dataset(name=self.data_name,
+                                data_dir=self.data_dir,
+                                fold=self.fold,
+                                split='train')
         dataloader = DataLoader(
-            dataset=self.dataset.load_split(fold=self.fold, split='train'),
+            dataset=dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=self.dataset.my_collate
+            collate_fn=dataset.my_collate
         )
         return dataloader
     
     def val_dataloader(self):
+        dataset = load_dataset(name=self.data_name,
+                                data_dir=self.data_dir,
+                                fold=self.fold,
+                                split='val')
         dataloader = DataLoader(
-            dataset=self.dataset.load_split(fold=self.fold, split='val'),
+            dataset=dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=self.dataset.my_collate
+            collate_fn=dataset.my_collate
         )
         return dataloader
     
     def test_dataloader(self):
+        dataset = load_dataset(name=self.data_name,
+                                data_dir=self.data_dir,
+                                fold=self.fold,
+                                split='test')
         dataloader = DataLoader(
-            dataset=self.dataset.load_split(fold=self.fold, split='test'),
+            dataset=dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=self.dataset.my_collate
+            collate_fn=dataset.my_collate
         )
         return dataloader

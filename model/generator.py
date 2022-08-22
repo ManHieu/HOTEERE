@@ -17,7 +17,7 @@ class GenOT(nn.Module):
                 tokenizer: str,
                 finetune_in_OT: bool = True,
                 OT_eps: float = 0.1,
-                OT_max_iter: int = 100,
+                OT_max_iter: int = 50,
                 OT_reduction: str = 'mean',
                 null_prob: float = 0.5,
                 n_selected_words: int = 10,
@@ -97,8 +97,10 @@ class GenOT(nn.Module):
                     head_scores.append(float(sim_score))
                 head_score = sum(head_scores) / len(head_scores)
                 scores.append(head_score)
+            else:
+                scores.append(-1.0)
                 
-            for pos in tail_pos:
+            if len(tail_pos) != 0:
                 str_before_tail = []
                 tail_str = predicted_seq[tail_pos[0][0]: tail_pos[0][1]]
                 for pos in tail_pos:
@@ -108,12 +110,18 @@ class GenOT(nn.Module):
                 tail_subword_ids = [[x, x + num_tail_subwords] for x in num_subwords_before_tail] 
                 tail_scores = []
                 for tail_ids in tail_subword_ids:
-                    tail_emb = torch.max(outputs_last_hidden_state[tail_ids[0]: tail_ids[1]], dim=0)[0]
-                    # print(f"tail_emb size: {tail_emb.size()}")
-                    sim_score = self.cos(trigger_emb[1], tail_emb)
-                    tail_scores.append(float(sim_score))
+                    try:
+                        tail_emb = torch.max(outputs_last_hidden_state[tail_ids[0]: tail_ids[1]], dim=0)[0]
+                        # print(f"tail_emb size: {tail_emb.size()}")
+                        sim_score = self.cos(trigger_emb[1], tail_emb)
+                        tail_scores.append(float(sim_score))
+                    except:
+                        pdb.set_trace()
                 tail_score = sum(tail_scores) / len(tail_scores)
                 scores.append(tail_score)
+            else:
+                scores.append(-1.0)
+                
             return sum(scores) / 2
     
     @torch.no_grad()

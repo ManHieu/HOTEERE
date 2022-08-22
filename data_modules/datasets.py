@@ -19,11 +19,13 @@ def register_dataset(dataset_class: BaseDataset):
 
 
 def load_dataset(name: str,
-                data_dir: str,):
+                data_dir: str,
+                fold: int = 0,
+                split: str = 'train',):
     '''
     Load a registered dataset
     '''
-    return DATASETS[name](data_dir=data_dir)
+    return DATASETS[name](data_dir=data_dir, fold=fold, split=split)
 
 
 class EEREDataset(BaseDataset):
@@ -39,11 +41,11 @@ class EEREDataset(BaseDataset):
             for short, natural in self.natural_relation_types.items()
         }
 
-    def load_data(self, data_path: str) -> List[InputExample]:
+    def load_data(self, data_path: str, load_fold:int = 0) -> List[InputExample]:
         examples = {}
         self.load_schema()
         print(f"Loading {self.name} from {data_path} with sample rate is {self.sample_rate}")
-        corpus = load(self.name, save_cache=False)
+        corpus = load(self.name, load_fold=load_fold, save_cache=False)
         for fold in corpus.keys():
             train, val, test = corpus[fold]
             example_train, example_test, example_val = [], [], []

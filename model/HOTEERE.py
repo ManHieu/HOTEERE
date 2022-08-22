@@ -27,7 +27,7 @@ class HOTEERE(pl.LightningModule):
                 generator_lr: float,
                 weight_selector_loss: float = 0.5,
                 OT_eps: float = 0.1,
-                OT_max_iter: int = 100,
+                OT_max_iter: int = 50,
                 OT_reduction: str = 'mean',
                 dropout: float = 0.5,
                 null_sentence_prob: float = 0.5,
@@ -184,14 +184,14 @@ class HOTEERE(pl.LightningModule):
                 (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
         
         self.log_dict({
-            's_rl': selector_rl_loss, 
-            'g_rl': generator_rl_loss, 
-            'mle': mle_loss, 
-            'source_preseve': prereseving_source_event_reward,
-            'gen_preseve': generator_preserving_event_reward,
-            'diversity': sentence_diversity_reward,
-            'perfromance': performance_reward,
-            }, prog_bar=True)
+                    's_rl': selector_rl_loss, 
+                    'g_rl': generator_rl_loss, 
+                    'mle': mle_loss, 
+                    }, prog_bar=True)
+        self.log_dict({'source_preseve': prereseving_source_event_reward,
+                    'gen_preseve': generator_preserving_event_reward,
+                    'diversity': sentence_diversity_reward,
+                    'perfromance': performance_reward,}, prog_bar=False)
 
         return loss
     
@@ -246,10 +246,10 @@ class HOTEERE(pl.LightningModule):
             pred_seqs.extend(output[0])
             gold_seqs.extend(output[1])
         p, r, f1 = compute_f1(pred_seqs, gold_seqs, task=task)
-        self.log_dict({'f1_dev': f1}, prog_bar=True)
+        self.log('f1_dev', f1, prog_bar=True)
         self.log_dict({'p_dev': p, 'r_dev': r}, prog_bar=False)
         if self.best_vals==None or f1 >= self.best_vals[-1]:
-            print((p, r, f1))
+            print(f"Better: {(p, r, f1)}")
             self.best_vals = [p, r, f1]
         return f1
 
@@ -304,8 +304,8 @@ class HOTEERE(pl.LightningModule):
             pred_seqs.extend(output[0])
             gold_seqs.extend(output[1])
         p, r, f1 = compute_f1(pred_seqs, gold_seqs, task=task)
-        self.log_dict({'f1_dev': f1}, prog_bar=True)
-        self.log_dict({'p_dev': p, 'r_dev': r}, prog_bar=False)
+        self.log_dict({'hp/f1_test': f1})
+        self.log_dict({'hp/p_test': p, 'hp/r_test': r})
         self.model_results = (p, r, f1)
         return f1
 

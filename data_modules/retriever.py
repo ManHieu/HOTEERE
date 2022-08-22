@@ -15,7 +15,7 @@ class AtomicRetriever(object):
     def __init__(self,
                 kb_path) -> None:
         self.p = Pipeline('english', cache_dir='./trankit')
-        self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
+        # self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
         self.choosen_rel = ['Causes', 'CausesDesire', 'Desires', 'HasA', 'HasSubEvent',
                             'HinderedBy', 'isAfter', 'isBefore', 'MotivatedByGoal', 'NotDesires',
                             'UsedFor', 'oEffect', 'ReceivesAction', 'PartOf', 'xEffect', 'xIntent,','xReason',]
@@ -121,7 +121,7 @@ class AtomicRetriever(object):
 
 class ConceptNetRetriever(object):
     def __init__(self) -> None:
-        self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
+        # self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
         self.chosen_rel = ['CapableOf', 'IsA', 'Causes', 'MannerOf', 'CausesDesire', 'UsedFor', 'HasSubevent', 'HasPrerequisite', 'NotDesires', 'PartOf', 'HasA', 'Entails', 'ReceivesAction', 'UsedFor', 'CreatedBy', 'MadeOf', 'Desires']
         self.rel_to_text  = {
             'CapableOf': 'is capable of', 

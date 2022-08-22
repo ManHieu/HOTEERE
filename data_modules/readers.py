@@ -6,10 +6,10 @@ from collections import defaultdict
 # from nltk import sent_tokenize
 from bs4 import BeautifulSoup as Soup
 import csv
-from trankit import Pipeline
+# from trankit import Pipeline
 from data_modules.utils import find_m_id, find_sent_id, get_mention_span, id_lookup, sent_id_lookup, span_SENT_to_DOC, tokenized_to_origin_span
-from allennlp.predictors.predictor import Predictor
-import allennlp_models.tagging
+# from allennlp.predictors.predictor import Predictor
+# import allennlp_models.tagging
 
 # predictor = Predictor.from_path("https://storage.googleapis.com/allennlp-public-models/coref-spanbert-large-2021.03.10.tar.gz")
 

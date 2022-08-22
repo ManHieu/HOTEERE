@@ -22,21 +22,22 @@ class BaseDataset(Dataset, ABC):
     def __init__(
         self,
         data_dir: str,
+        fold: int = 0,
+        split: str = 'train',
     ):
         self.data_path = data_dir
-        self.examples = self.load_data(self.data_path)
+        loaded_dataset = self.load_data(self.data_path, load_fold=fold)
+        print(f"Loading {split} of fold {fold} ....")
+        self.examples = loaded_dataset[fold][split]
+        self.features = self.compute_features(self.examples)
+        self.size = len(self.features)
+        print(f"{split} of fold {fold} has {self.size} datapoints!")
     
     def __len__(self) -> int:
         return self.size
     
     def __getitem__(self, index):
         return self.features[index]
-
-    def load_split(self, fold=0, split='train'):
-        split_corpus = self.examples[fold][split]
-        self.features = self.compute_features(split_corpus)
-        self.size = len(self.features)
-        return self
 
     @abstractmethod
     def load_schema(self):
@@ -46,7 +47,7 @@ class BaseDataset(Dataset, ABC):
         pass
 
     @abstractmethod
-    def load_data(self, split: str, data_path: str) -> List[InputExample]:
+    def load_data(self, split: str, data_path: str, load_fold: int) -> List[InputExample]:
         """
         Load data for a single split (train, dev, or test).
         """

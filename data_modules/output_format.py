@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import pdb
 import re
 from typing import Dict, List, Set, Tuple
 
@@ -51,10 +52,15 @@ class ECIOuputFormat(BaseOutputFormat):
         return template
     
     def find_trigger_position(self, generated_seq: str, head: str, tail: str):
-        head = f'\[{head}\]'
-        tail = f'\[{tail}\]'
-        head_position = [(m.start() + 1, m.start() + len(head) - 2) for m in re.finditer(head, generated_seq)]
-        tail_position = [(m.start() + 1, m.start() + len(tail) - 2) for m in re.finditer(tail, generated_seq)]
+        head = f'[{head}]'
+        tail = f'[{tail}]'
+        re_head = re.compile(re.escape(head), flags=re.I)
+        re_tail = re.compile(re.escape(tail), flags=re.I)
+        try:
+            head_position = [(m.start() + 1, m.start() + len(head) - 1) for m in re.finditer(re_head, generated_seq)]
+            tail_position = [(m.start() + 1, m.start() + len(tail) - 1) for m in re.finditer(re_tail, generated_seq)]
+        except:
+            pdb.set_trace()
         return head_position, tail_position
         
 

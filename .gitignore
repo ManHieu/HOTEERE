@@ -6,3 +6,5 @@ draft*
 trankit/*
 *__pycache__*
 lightning_logs/*
+tuning_experiments/*
+result_ESL.txt
