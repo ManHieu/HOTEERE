@@ -174,24 +174,37 @@ class HOTEERE(pl.LightningModule):
                                                         tail_pos_in_sent=tail_pos_in_sent,
                                                         is_training=True,)
         
-        selector_rl_loss = - (self.weight_source_perserve_ev_reward * prereseving_source_event_reward + 
-                            self.weight_sent_diversity_reward * sentence_diversity_reward + 
-                            (1.0 - self.weight_source_perserve_ev_reward - self.weight_sent_diversity_reward) * performance_reward) * selector_log_probs
-        generator_rl_loss = - (self.weight_gen_perserve_ev_reward * generator_preserving_event_reward + 
-                            (1.0 - self.weight_gen_perserve_ev_reward) * performance_reward) * generator_log_probs
-        
-        loss = self.weight_selector_loss * selector_rl_loss + \
-                (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
-        
-        self.log_dict({
-                    's_rl': selector_rl_loss, 
-                    'g_rl': generator_rl_loss, 
-                    'mle': mle_loss, 
-                    }, prog_bar=True)
+        if self.current_epoch >= 1:
+            selector_rl_loss = - (self.weight_source_perserve_ev_reward * prereseving_source_event_reward + 
+                                self.weight_sent_diversity_reward * sentence_diversity_reward + 
+                                (1.0 - self.weight_source_perserve_ev_reward - self.weight_sent_diversity_reward) * performance_reward) * selector_log_probs
+            generator_rl_loss = - (self.weight_gen_perserve_ev_reward * generator_preserving_event_reward + 
+                                (1.0 - self.weight_gen_perserve_ev_reward) * performance_reward) * generator_log_probs
+            
+            loss = self.weight_selector_loss * selector_rl_loss + \
+                    (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
+            self.log_dict({
+                        's_rl': selector_rl_loss, 
+                        'g_rl': generator_rl_loss, 
+                        's_OT': sent_OT_cost,
+                        'w_OT': word_OT_cost,
+                        'mle': mle_loss, 
+                        }, prog_bar=True)
+            
+        else:
+            loss = self.weight_selector_loss * sent_OT_cost + \
+                    (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * word_OT_cost)
+            self.log_dict({
+                        's_OT': sent_OT_cost,
+                        'w_OT': word_OT_cost,
+                        'mle': mle_loss, 
+                        }, prog_bar=True)
+
         self.log_dict({'source_preseve': prereseving_source_event_reward,
                     'gen_preseve': generator_preserving_event_reward,
                     'diversity': sentence_diversity_reward,
                     'perfromance': performance_reward,}, prog_bar=False)
+        
 
         return loss
     
