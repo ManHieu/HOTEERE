@@ -1,6 +1,7 @@
 import argparse
 import configparser
 import pdb
+import shutil
 from typing import Dict
 from pytorch_lightning import Trainer, seed_everything
 import torch
@@ -142,6 +143,7 @@ def run(defaults: Dict):
         print(f"F1: {f1}")
         print(f"P: {p}")
         print(f"R: {r}")
+        shutil.rmtree(f'{output_dir}')
     
     f1 = sum(f1s)/len(f1s)
     p = sum(ps)/len(ps)
@@ -152,23 +154,22 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [3, 5, 7, 10, 15]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [3,]), #  5, 7, 10, 15
         'batch_size': trial.suggest_categorical('batch_size', [4]),
-        'weight_source_perserve_ev_reward': trial.suggest_categorical('weight_source_perserve_ev_reward', [0.1]),
         'weight_gen_perserve_ev_reward': trial.suggest_categorical('weight_gen_perserve_ev_reward', [0.1]),
         'weight_sent_diversity_reward': trial.suggest_categorical('weight_sent_diversity_reward', [0.1]),
-        'weight_mle': trial.suggest_categorical('weight_mle', [0.75, 0.9, 0.95]),
-        'selector_lr': trial.suggest_categorical('selector_lr', [1e-4, 3e-4, 5e-4, 8e-4, 1e-3, 3e-3, 5e-3]),
-        'generator_lr': trial.suggest_categorical('generator_lr', [1e-5, 3e-5, 5e-5, 8e-5, 1e-4]),
-        'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
+        'weight_mle': trial.suggest_categorical('weight_mle', [0.95]), # 0.75, 0.9, 
+        'selector_lr': trial.suggest_categorical('selector_lr', [1e-5,]),  # 3e-5, 5e-5, 7e-5, 1e-4, 3e-4, 5e-4, 8e-4
+        'generator_lr': trial.suggest_categorical('generator_lr', [5e-4,]), # 1e-4, 3e-4, 8e-4
+        'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.5]), # 0.1, 0.25,
         'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
         'null_sentence_prob': trial.suggest_categorical('null_sentence_prob', [0.75]),
         'null_word_prob': trial.suggest_categorical('null_word_prob', [0.95]),
         'n_selected_sents': trial.suggest_categorical('n_selected_sents', [3]),
         'n_selected_words': trial.suggest_categorical('n_selected_words', [10]),
         'output_max_length': trial.suggest_categorical('output_max_length', [32]),
-        'finetune_selector_encoder': trial.suggest_categorical('finetune_selector_encoder', [True, False]),
-        'finetune_in_OT_generator': trial.suggest_categorical('finetune_in_OT_generator', [True, False]),
+        'finetune_selector_encoder': trial.suggest_categorical('finetune_selector_encoder', [True]),
+        'finetune_in_OT_generator': trial.suggest_categorical('finetune_in_OT_generator', [True]),
     }
 
     seed_everything(1741, workers=True)
@@ -181,14 +182,15 @@ def objective(trial: optuna.Trial):
     if args.tuning:
         record_file_name = f'result_{args.job}.txt'
 
-    with open(record_file_name, 'a', encoding='utf-8') as f:
-        f.write(f"{'--'*10} \n")
-        f.write(f"Dataset: {dataset} \n")
-        f.write(f"Random_state: 1741\n")
-        f.write(f"Hyperparams: \n {defaults}\n")
-        f.write(f"F1: {f1}  \n")
-        f.write(f"P: {p} \n")
-        f.write(f"R: {r} \n")
+    if f1 > 0.5:
+        with open(record_file_name, 'a', encoding='utf-8') as f:
+            f.write(f"Dataset: {dataset} \n")
+            f.write(f"Random_state: 1741\n")
+            f.write(f"Hyperparams: \n {defaults}\n")
+            f.write(f"F1: {f1}  \n")
+            f.write(f"P: {p} \n")
+            f.write(f"R: {r} \n")
+            f.write(f"{'--'*10} \n")
 
     return f1
 

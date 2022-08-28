@@ -34,9 +34,6 @@ class SentenceSelectOT(nn.Module):
         else:
             self.hidden_size = hidden_size
         self.use_rnn = use_rnn
-
-        self.filler = nn.Linear(self.hidden_size, self.hidden_size)
-
         self.sinkhorn = SinkhornDistance(eps=OT_eps, max_iter=OT_max_iter, reduction=OT_reduction)
         self.null_prob = null_prob
         self.kg_weight = kg_weight
@@ -147,9 +144,7 @@ class SentenceSelectOT(nn.Module):
             assert X_maginal.size(0) == X_emb.size(0)
 
         X_presentations = pad_sequence(X_presentations, batch_first=True)
-        X_presentations = self.filler(X_presentations)
         Y_presentations = pad_sequence(Y_presentations, batch_first=True)
-        Y_presentations = self.filler(Y_presentations)
         P_X = pad_sequence(P_X, batch_first=True)
         P_Y = pad_sequence(P_Y, batch_first=True)
 

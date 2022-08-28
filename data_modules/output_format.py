@@ -31,25 +31,32 @@ class ECIOuputFormat(BaseOutputFormat):
     non_rel_template = "No. [{head}] {label} [{tail}] and {detail}"
 
     def format_output(self, 
-                    important_words: List[Tuple[int, str]], 
                     head: str, tail: str, label: str,
-                    num_before_head_subword: int, 
-                    num_before_tail_subword: int) -> str:
+                    important_words: List[Tuple[int, str]] = None, 
+                    num_before_head_subword: int = None, 
+                    num_before_tail_subword: int = None) -> str:
         # sorted as appearance order
-        important_words.sort(key=lambda x: x[0])
-        detail = []
-        for item in important_words:
-            if item[0] == num_before_head_subword or item[0] == num_before_tail_subword:
-                assert item[1] == head or item[1] == tail
-                detail.append(f'[{item[1]}]')
+        if important_words != None:
+            important_words.sort(key=lambda x: x[0])
+            detail = []
+            for item in important_words:
+                if item[0] == num_before_head_subword or item[0] == num_before_tail_subword:
+                    assert item[1] == head or item[1] == tail
+                    detail.append(f'[{item[1]}]')
+                else:
+                    detail.append(item[1])
+            detail = ' '.join(detail)
+            if label != "has no relation to":
+                template = self.exitting_rel_template.format(head=head, label=label, tail=tail, detail=detail)
             else:
-                detail.append(item[1])
-        detail = ' '.join(detail)
-        if label != "has no relation to":
-            template = self.exitting_rel_template.format(head=head, label=label, tail=tail, detail=detail)
+                template = self.non_rel_template.format(head=head, label=label, tail=tail, detail=detail)
+            return template
         else:
-            template = self.non_rel_template.format(head=head, label=label, tail=tail, detail=detail)
-        return template
+            if label != "has no relation to":
+                template = "Yes. [{head}] {label} [{tail}]".format(head=head, label=label, tail=tail)
+            else:
+                template = "No. [{head}] {label} [{tail}]".format(head=head, label=label, tail=tail)
+            return template
     
     def find_trigger_position(self, generated_seq: str, head: str, tail: str):
         head = f'[{head}]'
