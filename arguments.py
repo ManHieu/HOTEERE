@@ -69,12 +69,6 @@ class TrainingArguments(transformers.TrainingArguments):
         default=1741,
         metadata={"help": "seeding for reproductivity"}
     )
-
-    weight_gen_perserve_ev_reward: float = field(
-        default=0.1,
-        metadata={"help": "weight of preserving generated event's meaning reward"}
-    )
-
     weight_mle: float = field(
         default=0.8,
         metadata={"help": "weight of generating mle loss"}

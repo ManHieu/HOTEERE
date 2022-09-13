@@ -19,7 +19,6 @@ class HOTEERE(pl.LightningModule):
     TODO: sampling from p(Y) (p(y_i) = sum_j(pi_yi_xj))
     """
     def __init__(self,
-                weight_gen_perserve_ev_reward: float,
                 weight_mle: float,
                 num_training_step: int,
                 num_warm_up: int,
@@ -43,7 +42,6 @@ class HOTEERE(pl.LightningModule):
                 use_rnn: bool = False) -> None:
         super().__init__()
         self.save_hyperparameters()
-        self.weight_gen_perserve_ev_reward = weight_gen_perserve_ev_reward
         self.weight_mle = weight_mle
         self.weight_selector_loss = weight_selector_loss
         self.num_training_step = num_training_step
@@ -161,11 +159,10 @@ class HOTEERE(pl.LightningModule):
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
             if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['cause', 'because']
+                task_description_words = ['causal relation']
                 task = 'ECI'
             word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward, \
-            generator_preserving_event_reward = self.generator(task=task,
+            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
                                                             output_format_type=batch[0].output_format_type,
                                                             contexts=contexts,
@@ -180,12 +177,11 @@ class HOTEERE(pl.LightningModule):
                                                             is_training=True,
                                                             is_warm_up=False)
             selector_rl_loss = - performance_reward * selector_log_probs
-            generator_rl_loss = - (self.weight_gen_perserve_ev_reward * generator_preserving_event_reward + (1.0 - self.weight_gen_perserve_ev_reward) * performance_reward) * generator_log_probs
+            generator_rl_loss = - performance_reward * generator_log_probs
             
             loss = self.weight_selector_loss * selector_rl_loss + \
                     (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
-            self.log_dict({'gen_preseve': generator_preserving_event_reward,
-                        'perfromance': performance_reward,
+            self.log_dict({'perfromance': performance_reward,
                         's_OT': sent_OT_cost,
                         'w_OT': word_OT_cost,
                         'mle': mle_loss, 
@@ -201,8 +197,7 @@ class HOTEERE(pl.LightningModule):
                 task_description_words = ['cause', 'because']
                 task = 'ECI'
             word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward, \
-            generator_preserving_event_reward = self.generator(task=task,
+            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
                                                             output_format_type=batch[0].output_format_type,
                                                             contexts=contexts,
@@ -238,8 +233,7 @@ class HOTEERE(pl.LightningModule):
                 task_description_words = ['cause', 'because']
                 task = 'ECI'
             word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward, \
-            generator_preserving_event_reward = self.generator(task=task,
+            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
                                                             output_format_type=batch[0].output_format_type,
                                                             contexts=contexts,
@@ -261,8 +255,7 @@ class HOTEERE(pl.LightningModule):
                 task_description_words = ['cause', 'because']
                 task = 'ECI'
             word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward, \
-            generator_preserving_event_reward = self.generator(task=task,
+            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
                                                             output_format_type=batch[0].output_format_type,
                                                             contexts=contexts,
@@ -311,8 +304,7 @@ class HOTEERE(pl.LightningModule):
                 task_description_words = ['cause', 'because']
                 task = 'ECI'
             word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward, \
-            generator_preserving_event_reward = self.generator(task=task,
+            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
                                                             output_format_type=batch[0].output_format_type,
                                                             contexts=contexts,
@@ -333,8 +325,7 @@ class HOTEERE(pl.LightningModule):
                 task_description_words = ['cause', 'because']
                 task = 'ECI'
             word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward, \
-            generator_preserving_event_reward = self.generator(task=task,
+            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
                                                             output_format_type=batch[0].output_format_type,
                                                             contexts=contexts,

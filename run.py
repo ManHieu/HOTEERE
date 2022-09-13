@@ -66,7 +66,6 @@ def run(defaults: Dict):
             f'-slr{training_args.selector_lr}'
             f'-glr{training_args.generator_lr}'
             f'-eps{training_args.num_epoches}'
-            f'-reward_weight{training_args.weight_gen_perserve_ev_reward}'
             f'-mle_weight{training_args.weight_mle}'
             f'-selector_weight{training_args.weight_selector_loss}'
             f'-SOT_{model_args.kg_weight}_{model_args.n_selected_sents}'
@@ -91,8 +90,7 @@ def run(defaults: Dict):
                                     )
         lr_logger = LearningRateMonitor(logging_interval='step')
 
-        model = HOTEERE(weight_gen_perserve_ev_reward=training_args.weight_gen_perserve_ev_reward,
-                        weight_mle=training_args.weight_mle,
+        model = HOTEERE(weight_mle=training_args.weight_mle,
                         num_training_step=int(number_step_in_epoch * training_args.num_epoches),
                         selector_lr=training_args.selector_lr,
                         generator_lr=training_args.generator_lr,
@@ -154,17 +152,16 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [7, 10, 15]),
-        'num_warm_up': trial.suggest_categorical('num_warm_up', [2]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [7, 10, 15, 20]),
+        'num_warm_up': trial.suggest_categorical('num_warm_up', [1, 2]),
         'batch_size': trial.suggest_categorical('batch_size', [8]),
-        'weight_gen_perserve_ev_reward': trial.suggest_categorical('weight_gen_perserve_ev_reward', [0.1]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
         'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 8e-6, 1e-5]),
-        'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 1e-4, 5e-4]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 7e-5, 1e-4, 3e-4, 5e-4]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
         'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
-        'n_align_sents': trial.suggest_categorical('n_align_sents', [2]),
-        'n_align_words': trial.suggest_categorical('n_align_words', [5]),
+        'n_align_sents': trial.suggest_categorical('n_align_sents', [1, 2]),
+        'n_align_words': trial.suggest_categorical('n_align_words', [1, 3, 5]),
         'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
         'n_selected_words': trial.suggest_categorical('n_selected_words', [None, 10]),
         'output_max_length': trial.suggest_categorical('output_max_length', [64]),

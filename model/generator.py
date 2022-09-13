@@ -395,21 +395,21 @@ class GenOT(nn.Module):
         
         if is_warm_up == False:
             performance_reward = self.compute_performance_reward(predicted_seqs=predicted_seq, gold_seqs=outputs, task=task)
-            preserving_event_reward = []
-            for head, tail, seq, trigger_emb in zip(head_strs, tail_strs, predicted_seq, trigger_embs):
-                head_position, tail_position = output_formater.find_trigger_position(generated_seq=seq, head=head, tail=tail)
-                reward = self.compute_preserving_event_in_predict_seq_reward(predicted_seq=seq,
-                                                                            trigger_emb=trigger_emb,
-                                                                            head_pos=head_position,
-                                                                            tail_pos=tail_position)
-                preserving_event_reward.append(reward)
-            preserving_event_reward = sum(preserving_event_reward) / len(preserving_event_reward)
+            # preserving_event_reward = []
+            # for head, tail, seq, trigger_emb in zip(head_strs, tail_strs, predicted_seq, trigger_embs):
+            #     head_position, tail_position = output_formater.find_trigger_position(generated_seq=seq, head=head, tail=tail)
+            #     reward = self.compute_preserving_event_in_predict_seq_reward(predicted_seq=seq,
+            #                                                                 trigger_emb=trigger_emb,
+            #                                                                 head_pos=head_position,
+            #                                                                 tail_pos=tail_position)
+            #     preserving_event_reward.append(reward)
+            # preserving_event_reward = sum(preserving_event_reward) / len(preserving_event_reward)
         else:
             cost = 0
             log_probs = 0
             performance_reward = 0 
-            preserving_event_reward = 0
+            # preserving_event_reward = 0
 
-        return cost, log_probs, mle_loss, predicted_seq, outputs, performance_reward, preserving_event_reward
+        return cost, log_probs, mle_loss, predicted_seq, outputs, performance_reward
 
 
