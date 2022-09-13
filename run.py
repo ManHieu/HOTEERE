@@ -10,7 +10,7 @@ import os
 import optuna
 from transformers import HfArgumentParser
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-
+from pytorch_lightning import loggers as pl_loggers
 from arguments import DataTrainingArguments, ModelArguments, TrainingArguments
 from data_modules.datamodule import EEREDataModule
 from model.HOTEERE import HOTEERE
@@ -113,7 +113,7 @@ def run(defaults: Dict):
                         use_rnn=model_args.use_rnn)
         
         trainer = Trainer(
-            # logger=tb_logger,
+            logger=tb_logger,
             min_epochs=training_args.num_epoches,
             max_epochs=training_args.num_epoches, 
             accelerator="gpu", 
@@ -203,7 +203,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--tuning', action='store_true', default=False, help='tune hyperparameters')
 
     args, remaining_args = parser.parse_known_args()
-
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"logs_{args.job}/")
     if args.tuning:
         print("tuning ......")
         # sampler = optuna.samplers.TPESampler(seed=1741)

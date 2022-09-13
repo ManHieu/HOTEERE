@@ -196,6 +196,7 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
 
         random.shuffle(_train)
         folds = {}
+        processed_val = processor.process_and_save(test, None, save_cache)
         for fold, (train_ids, valid_ids) in enumerate(kfold.split(_train)):
             if fold == load_fold:
                 try:
@@ -211,10 +212,8 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
                 processed_train = processor.process_and_save(train, processed_path, save_cache)
 
                 processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-                processed_val = processor.process_and_save(validate, processed_path, save_cache)
+                processed_test = processor.process_and_save(validate, processed_path, save_cache)
                 
-                processed_path = f"./datasets/EventStoryLine/{fold}/val.json"
-                processed_test = processor.process_and_save(test, processed_path, save_cache)
                 folds[fold] = [processed_train, processed_val, processed_test]
         return folds
     

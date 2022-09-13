@@ -511,7 +511,7 @@ def ctb_cat_reader(dir_name, file_name):
     _sent_token_span_doc = defaultdict(list)
     for tok in xml_dom.find_all('token'):
         token = tok.text
-        t_id = int(tok.attrs['t_id'])
+        t_id = int(tok.attrs['id'])
         sent_id = int(tok.attrs['sentence'])
         tok_sent_id = len(_sent_dict[sent_id])
 
