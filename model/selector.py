@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from math import cos
 import pdb
 from typing import List
@@ -17,7 +17,7 @@ class SentenceSelectOT(nn.Module):
                 OT_max_iter: int = 50,
                 OT_reduction: str = 'mean',
                 dropout: float = 0.5,
-                null_prob: float = 0.5,
+                k: int = 1,
                 kg_weight: float = 0.2,
                 finetune: bool = True,
                 encoder_name_or_path: str = 't5-base',
@@ -34,8 +34,15 @@ class SentenceSelectOT(nn.Module):
         else:
             self.hidden_size = hidden_size
         self.use_rnn = use_rnn
+        if use_rnn:
+            self.lstm = nn.LSTM(self.hidden_size, self.hidden_size // 2 , 2, 
+                                batch_first=True, dropout=dropout, bidirectional=True)
+        self.filler = nn.Sequential(OrderedDict([
+                                    ('linear', nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)),
+                                    ('ativ_fn', nn.LeakyReLU(0.2))
+                                    ]))
         self.sinkhorn = SinkhornDistance(eps=OT_eps, max_iter=OT_max_iter, reduction=OT_reduction)
-        self.null_prob = null_prob
+        self.k = k
         self.kg_weight = kg_weight
         self.dropout = nn.Dropout(dropout)
         self.n_selected_sents = n_selected_sents
@@ -46,22 +53,6 @@ class SentenceSelectOT(nn.Module):
         rnn_encode, _ = self.lstm(packed)
         outp, _ = pad_packed_sequence(rnn_encode, batch_first=True)
         return outp
-
-    @torch.no_grad()
-    def compute_sentence_diversity_reward(self, host_sent_embs, selected_sent_embs):
-        reward = []
-        assert len(host_sent_embs) == len(selected_sent_embs)
-        for host_emb, selected_emb in zip(host_sent_embs, selected_sent_embs):
-            if len(selected_emb) != 0:
-                _reward = []
-                selected_emb = torch.stack(selected_emb)
-                for i in range(host_emb.size(0)):
-                    cos_distance = 1 - self.cos(host_emb[i].unsqueeze(0), selected_emb)
-                    _reward.append(float(torch.sum(cos_distance)) / cos_distance.size(-1))
-                reward.append(sum(_reward) / len(_reward))
-            else:
-                reward.append(0.1)
-        return sum(reward) / len(reward)
 
     def forward(self,
                 doc_sentences: List[List[str]],
@@ -124,15 +115,20 @@ class SentenceSelectOT(nn.Module):
             host_sentences_emb = doc_embs[i, host_id]
             host_embs.append(host_sentences_emb)
             context_sentences_emb = doc_embs[i, context_id]
-            null_presentation = torch.mean(context_sentences_emb, dim=0).unsqueeze(0)
+            null_presentation = torch.zeros_like(host_sentences_emb[0]).unsqueeze(0)
             X_emb = torch.cat([null_presentation, host_sentences_emb], dim=0)
             X_presentations.append(X_emb)
             context_sentences_emb = torch.cat([context_sentences_emb, kg_sent_embs[i, 0:_n_kg_sent]], dim=0)
             Y_presentations.append(context_sentences_emb)
 
-            X_maginal = torch.tensor([1.0 / len(host_id)] * len(host_id), dtype=torch.float)
-            X_maginal = [torch.tensor([self.null_prob]), (1 - self.null_prob) * X_maginal]
+            if self.k <= len(context_id) // len(host_id):
+                k = self.k
+            else:
+                k = len(context_id) // len(host_id)
+            X_maginal = torch.tensor([1.0 * k] * len(host_id), dtype=torch.float)
+            X_maginal = [torch.tensor([len(context_id) - k * len(host_id)]), X_maginal]
             X_maginal = torch.cat(X_maginal, dim=0)
+            X_maginal = X_maginal / torch.sum(X_maginal)
             P_X.append(X_maginal)
             context_score = context_sentences_scores[i]
             Y_maginal = torch.tensor(context_score, dtype=torch.float)
@@ -145,10 +141,12 @@ class SentenceSelectOT(nn.Module):
 
         X_presentations = pad_sequence(X_presentations, batch_first=True)
         Y_presentations = pad_sequence(Y_presentations, batch_first=True)
+        X_presentations = self.filler(X_presentations)
+        Y_presentations = self.filler(Y_presentations)
         P_X = pad_sequence(P_X, batch_first=True)
         P_Y = pad_sequence(P_Y, batch_first=True)
 
-        cost, pi, C = self.sinkhorn(X_presentations, Y_presentations, P_X, P_Y, cuda=True) # pi: (bs, nX, nY)
+        cost, pi, C = self.sinkhorn(X_presentations, Y_presentations, P_X, P_Y) # pi: (bs, nX, nY)
         # =============================An action with top-5 opts====================================
         # aligns = []
         # for i in range(bs):
@@ -185,12 +183,13 @@ class SentenceSelectOT(nn.Module):
         selected_sents = []
         selected_sent_embs = []
         mask = torch.zeros_like(pi)
+        _pi = pi / (pi.sum(dim=2, keepdim=True) + 1e-10)
         for i in range(bs):
             _selected_sents_with_mapping = {}
             nY = n_kg_sent[i] + len(context_ids[i])
             for j in range(nY):
                 if aligns[i, j] != 0:
-                    prob = pi[i, aligns[i, j], j]
+                    prob = _pi[i, aligns[i, j], j]
                     mapping = (i, aligns[i, j], j)
                     if j < len(context_ids[i]):
                         context_sent_id = context_ids[i][j]
@@ -214,22 +213,23 @@ class SentenceSelectOT(nn.Module):
                 sorted_by_prob = list(_selected_sents_with_mapping.values())
                 sorted_by_prob.sort(key=lambda x: x[0], reverse=True)
                 for item in sorted_by_prob[:self.n_selected_sents]:
-                    _selected_sents.append(item[-1])
-                    _selected_sent_embs.append(item[-2])
-                    indicate = item[1]
-                    mask[indicate[0], indicate[1], indicate[2]] = 1
+                    if item[0] >= 1e-3:
+                        _selected_sents.append(item[-1])
+                        _selected_sent_embs.append(item[-2])
+                        indicate = item[1]
+                        mask[indicate[0], indicate[1], indicate[2]] = 1
             else:
                 for item in _selected_sents_with_mapping.values():
-                    _selected_sents.append(item[-1])
-                    _selected_sent_embs.append(item[-2])
-                    indicate = item[1]
-                    mask[indicate[0], indicate[1], indicate[2]] = 1
+                    if item[0] >= 1e-3:
+                        _selected_sents.append(item[-1])
+                        _selected_sent_embs.append(item[-2])
+                        indicate = item[1]
+                        mask[indicate[0], indicate[1], indicate[2]] = 1
             selected_sents.append(_selected_sents)
             selected_sent_embs.append(_selected_sent_embs)
         
-        log_probs = torch.sum((torch.log(pi + 1e-10) * mask).view((bs, -1)), dim=-1)
-        sentence_diversity_reward = self.compute_sentence_diversity_reward(host_sent_embs=host_embs, selected_sent_embs=selected_sent_embs)
-        return cost, torch.mean(log_probs, dim=0), selected_sents, sentence_diversity_reward
+        log_probs = torch.sum((torch.log(_pi + 1e-10) * mask).view((bs, -1)), dim=-1)
+        return cost, torch.mean(log_probs, dim=0), selected_sents
 
 
             

@@ -128,13 +128,6 @@ class Preprocessor(object):
 
 
 def load(dataset: str, load_fold: int=0, save_cache=False):
-    seed = 7890
-    import torch
-    torch.manual_seed(seed)
-    import random
-    random.seed(seed)
-    import numpy as np
-    np.random.seed(seed)
     if dataset == 'HiEve':
         datapoint = 'hoteere_data_point'
         corpus_dir = 'datasets/hievents_v2/processed/'

@@ -11,6 +11,7 @@ from data_modules.input_example import InputExample
 from model.generator import GenOT
 from model.selector import SentenceSelectOT
 from utils.tools import compute_f1
+from torch.optim.lr_scheduler import LambdaLR
 
 
 class HOTEERE(pl.LightningModule):
@@ -18,11 +19,10 @@ class HOTEERE(pl.LightningModule):
     TODO: sampling from p(Y) (p(y_i) = sum_j(pi_yi_xj))
     """
     def __init__(self,
-                weight_source_perserve_ev_reward: float,
                 weight_gen_perserve_ev_reward: float,
-                weight_sent_diversity_reward: float,
                 weight_mle: float,
                 num_training_step: int,
+                num_warm_up: int,
                 selector_lr: float,
                 generator_lr: float,
                 weight_selector_loss: float = 0.5,
@@ -30,26 +30,26 @@ class HOTEERE(pl.LightningModule):
                 OT_max_iter: int = 50,
                 OT_reduction: str = 'mean',
                 dropout: float = 0.5,
-                null_sentence_prob: float = 0.5,
                 kg_weight: float = 0.2,
                 finetune_selector_encoder: bool = True,
                 finetune_in_OT_generator: bool = True,
                 encoder_name_or_path: str = 't5-base',
                 tokenizer_name_or_path: str = 't5-base',
-                n_selected_sents: int = 5,
-                null_word_prob: float = 0.5,
-                n_selected_words: int = 10,
-                output_max_length: int = 32,) -> None:
+                n_selected_sents: int = None,
+                n_selected_words: int = None,
+                n_align_sents: int = 5,
+                n_align_words: int = 10,
+                output_max_length: int = 32,
+                use_rnn: bool = False) -> None:
         super().__init__()
         self.save_hyperparameters()
-        self.weight_source_perserve_ev_reward = weight_source_perserve_ev_reward
         self.weight_gen_perserve_ev_reward = weight_gen_perserve_ev_reward
-        self.weight_sent_diversity_reward = weight_sent_diversity_reward
         self.weight_mle = weight_mle
         self.weight_selector_loss = weight_selector_loss
         self.num_training_step = num_training_step
         self.selector_lr = selector_lr
         self.generator_lr = generator_lr
+        self.num_warm_up = num_warm_up
 
         self.hidden_size = 768 if 'base' in encoder_name_or_path else 1024
         self.selector = SentenceSelectOT(hidden_size=self.hidden_size,
@@ -57,19 +57,20 @@ class HOTEERE(pl.LightningModule):
                                         OT_max_iter=OT_max_iter,
                                         OT_reduction=OT_reduction,
                                         dropout=dropout,
-                                        null_prob=null_sentence_prob,
+                                        k=n_align_sents,
                                         kg_weight=kg_weight,
                                         finetune=finetune_selector_encoder,
                                         encoder_name_or_path=encoder_name_or_path,
                                         tokenizer_name_or_path=tokenizer_name_or_path,
-                                        n_selected_sents=n_selected_sents)
+                                        n_selected_sents=n_selected_sents,
+                                        use_rnn=use_rnn)
         self.generator = GenOT(pretrain_model=encoder_name_or_path,
                             tokenizer=tokenizer_name_or_path,
                             finetune_in_OT=finetune_in_OT_generator,
                             OT_eps=OT_eps,
                             OT_max_iter=OT_max_iter,
                             OT_reduction=OT_reduction,
-                            null_prob=null_word_prob,
+                            k=n_align_words,
                             n_selected_words=n_selected_words,
                             output_max_length=output_max_length)
         
@@ -147,15 +148,15 @@ class HOTEERE(pl.LightningModule):
         return contexts, head_positions, tail_positions, labels, head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent
 
     def training_step(self, batch: List[InputExample], batch_idx) -> STEP_OUTPUT:
-        if self.current_epoch > 1:
+        if self.current_epoch >= self.num_warm_up:
             doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
-            sent_OT_cost, selector_log_probs, selected_sents, sentence_diversity_reward = self.selector(doc_sentences=doc_sentences,
-                                                                                                    doc_embs=doc_embs,
-                                                                                                    kg_sents=kg_sents,
-                                                                                                    kg_sent_embs=kg_sent_embs,
-                                                                                                    host_ids=host_ids, 
-                                                                                                    context_sentences_scores=context_sentences_scores, 
-                                                                                                    is_training=True)
+            sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
+                                                                            doc_embs=doc_embs,
+                                                                            kg_sents=kg_sents,
+                                                                            kg_sent_embs=kg_sent_embs,
+                                                                            host_ids=host_ids, 
+                                                                            context_sentences_scores=context_sentences_scores, 
+                                                                            is_training=True)
 
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
@@ -178,13 +179,12 @@ class HOTEERE(pl.LightningModule):
                                                             tail_pos_in_sent=tail_pos_in_sent,
                                                             is_training=True,
                                                             is_warm_up=False)
-            selector_rl_loss = - (self.weight_sent_diversity_reward * sentence_diversity_reward + (1.0 - self.weight_sent_diversity_reward) * performance_reward) * selector_log_probs
+            selector_rl_loss = - performance_reward * selector_log_probs
             generator_rl_loss = - (self.weight_gen_perserve_ev_reward * generator_preserving_event_reward + (1.0 - self.weight_gen_perserve_ev_reward) * performance_reward) * generator_log_probs
             
             loss = self.weight_selector_loss * selector_rl_loss + \
                     (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
             self.log_dict({'gen_preseve': generator_preserving_event_reward,
-                        'divers': sentence_diversity_reward,
                         'perfromance': performance_reward,
                         's_OT': sent_OT_cost,
                         'w_OT': word_OT_cost,
@@ -222,15 +222,15 @@ class HOTEERE(pl.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
-        if self.current_epoch > 1:
+        if self.current_epoch >= self.num_warm_up:
             doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
-            sent_OT_cost, selector_log_probs, selected_sents, sentence_diversity_reward = self.selector(doc_sentences=doc_sentences,
-                                                                                                    doc_embs=doc_embs,
-                                                                                                    kg_sents=kg_sents,
-                                                                                                    kg_sent_embs=kg_sent_embs,
-                                                                                                    host_ids=host_ids, 
-                                                                                                    context_sentences_scores=context_sentences_scores, 
-                                                                                                    is_training=True)
+            sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
+                                                                            doc_embs=doc_embs,
+                                                                            kg_sents=kg_sents,
+                                                                            kg_sent_embs=kg_sent_embs,
+                                                                            host_ids=host_ids, 
+                                                                            context_sentences_scores=context_sentences_scores, 
+                                                                            is_training=False)
 
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
@@ -295,36 +295,59 @@ class HOTEERE(pl.LightningModule):
         return f1
 
     def test_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
-        doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
-        sent_OT_cost, selector_log_probs, selected_sents, sentence_diversity_reward = self.selector(doc_sentences=doc_sentences,
-                                                                                                    doc_embs=doc_embs,
-                                                                                                    kg_sents=kg_sents,
-                                                                                                    kg_sent_embs=kg_sent_embs,
-                                                                                                    host_ids=host_ids, 
-                                                                                                    context_sentences_scores=context_sentences_scores, 
-                                                                                                    is_training=False)
+        if self.current_epoch >= self.num_warm_up:
+            doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
+            sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
+                                                                            doc_embs=doc_embs,
+                                                                            kg_sents=kg_sents,
+                                                                            kg_sent_embs=kg_sent_embs,
+                                                                            host_ids=host_ids, 
+                                                                            context_sentences_scores=context_sentences_scores, 
+                                                                            is_training=False)
 
-        contexts, head_positions, tail_positions, labels, \
-        head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
-        if batch[0].input_format_type == 'ECI_input':
-            task_description_words = ['cause', 'because']
-            task = 'ECI'
-        word_OT_cost, generator_log_probs, mle_loss, \
-        predicted_seq, gold_seqs, performance_reward, \
-        generator_preserving_event_reward = self.generator(task=task,
-                                                        input_format_type=batch[0].input_format_type,
-                                                        output_format_type=batch[0].output_format_type,
-                                                        contexts=contexts,
-                                                        head_positions=head_positions,
-                                                        tail_positions=tail_positions,
-                                                        task_description_words=task_description_words,
-                                                        labels=labels,
-                                                        head_sentences=head_sentences,
-                                                        head_pos_in_sent=head_pos_in_sent,
-                                                        tail_sentences=tail_sentences,
-                                                        tail_pos_in_sent=tail_pos_in_sent,
-                                                        is_training=False,
-                                                        is_warm_up=False)
+            contexts, head_positions, tail_positions, labels, \
+            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
+            if batch[0].input_format_type == 'ECI_input':
+                task_description_words = ['cause', 'because']
+                task = 'ECI'
+            word_OT_cost, generator_log_probs, mle_loss, \
+            predicted_seq, gold_seqs, performance_reward, \
+            generator_preserving_event_reward = self.generator(task=task,
+                                                            input_format_type=batch[0].input_format_type,
+                                                            output_format_type=batch[0].output_format_type,
+                                                            contexts=contexts,
+                                                            head_positions=head_positions,
+                                                            tail_positions=tail_positions,
+                                                            task_description_words=task_description_words,
+                                                            labels=labels,
+                                                            head_sentences=head_sentences,
+                                                            head_pos_in_sent=head_pos_in_sent,
+                                                            tail_sentences=tail_sentences,
+                                                            tail_pos_in_sent=tail_pos_in_sent,
+                                                            is_training=False,
+                                                            is_warm_up=False)
+        else:
+            contexts, head_positions, tail_positions, labels, \
+            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
+            if batch[0].input_format_type == 'ECI_input':
+                task_description_words = ['cause', 'because']
+                task = 'ECI'
+            word_OT_cost, generator_log_probs, mle_loss, \
+            predicted_seq, gold_seqs, performance_reward, \
+            generator_preserving_event_reward = self.generator(task=task,
+                                                            input_format_type=batch[0].input_format_type,
+                                                            output_format_type=batch[0].output_format_type,
+                                                            contexts=contexts,
+                                                            head_positions=head_positions,
+                                                            tail_positions=tail_positions,
+                                                            task_description_words=task_description_words,
+                                                            labels=labels,
+                                                            head_sentences=head_sentences,
+                                                            head_pos_in_sent=head_pos_in_sent,
+                                                            tail_sentences=tail_sentences,
+                                                            tail_pos_in_sent=tail_pos_in_sent,
+                                                            is_training=False,
+                                                            is_warm_up=True)
         
         return predicted_seq, gold_seqs, task
 
@@ -343,7 +366,7 @@ class HOTEERE(pl.LightningModule):
 
     def configure_optimizers(self):
         "Prepare optimizer and schedule (linear warmup and decay)"
-        num_batches = self.num_training_step / self.trainer.accumulate_grad_batches
+        num_batches_in_epoch = self.num_training_step / (self.trainer.accumulate_grad_batches * self.trainer.max_epochs)
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_pretrain_parameters = [
             {
@@ -368,10 +391,21 @@ class HOTEERE(pl.LightningModule):
             },]
         
         optimizer = AdamW(optimizer_grouped_pretrain_parameters, betas=[0.9, 0.999], eps=1e-8)
-        num_warmup_steps = 0.1 * num_batches
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_batches
-        )
+
+        num_warmup_steps = num_batches_in_epoch * self.num_warm_up
+        num_steps = num_batches_in_epoch * (self.trainer.max_epochs - self.num_warm_up)
+        def lr_lambda(current_step: int):
+            if current_step <= num_warmup_steps:
+                return max(
+                0.0, float(num_warmup_steps - current_step) / float(max(1, num_warmup_steps - num_warmup_steps*0.1))
+                )
+            elif num_warmup_steps < current_step <= num_steps * 0.1 + num_warmup_steps:
+                return float(current_step - num_warmup_steps) / float(max(1, num_steps * 0.1))
+            else:
+                return max(
+                0.0, float(num_steps - current_step + num_warmup_steps) / float(max(1, num_steps - num_steps*0.1))
+                )
+        scheduler = LambdaLR(optimizer, lr_lambda, -1)
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

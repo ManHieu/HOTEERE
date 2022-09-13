@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import pdb
 from typing import List, Tuple
 import torch 
@@ -19,7 +20,7 @@ class GenOT(nn.Module):
                 OT_eps: float = 0.1,
                 OT_max_iter: int = 50,
                 OT_reduction: str = 'mean',
-                null_prob: float = 0.5,
+                k: int = 5,
                 n_selected_words: int = 10,
                 output_max_length: int = 32):
         super().__init__()
@@ -32,8 +33,12 @@ class GenOT(nn.Module):
         self.tokenizer_for_generate.padding_side = 'left'
         self.tokenizer_for_generate.pad_token = self.tokenizer_for_generate.eos_token # to avoid an error
         self.finetune_in_OT = finetune_in_OT
+        self.filler = nn.Sequential(OrderedDict([
+                                    ('linear', nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)),
+                                    ('ativ_fn', nn.LeakyReLU(0.2))
+                                    ]))
         self.sinkhorn = SinkhornDistance(eps=OT_eps, max_iter=OT_max_iter, reduction=OT_reduction)
-        self.null_prob = null_prob
+        self.k = k
         self.n_selected_words = n_selected_words
         self.output_max_length = output_max_length
         self.cos = nn.CosineSimilarity(dim=0)
@@ -57,7 +62,7 @@ class GenOT(nn.Module):
             if wrong_struct == len(predicted_seqs):
                 return -1.0
             elif n_predict==n_gold==0:
-                return 0.5
+                return 0.9
             else:
                 p = (tp + 1)/(n_predict + 1)
                 r = (tp + 1)/(n_gold + 1)
@@ -193,14 +198,19 @@ class GenOT(nn.Module):
             tail_emb = torch.max(ouputs_last_hidden_state[i, list(range(tail_subword_ids[i][0], tail_subword_ids[i][1]))], dim=0)[0]
             trigger_embs.append([head_emb, tail_emb])
             context_emb = ouputs_last_hidden_state[i, context_id]
-            null_presentation = torch.mean(context_emb, dim=0).unsqueeze(0)
+            null_presentation = torch.zeros_like(trigger_emb[0]).unsqueeze(0)
             X_emb = torch.cat([null_presentation, trigger_emb, task_description_embs])
             X_presentations.append(X_emb)
             Y_presentations.append(context_emb)
 
-            X_maginal = torch.tensor([1.0 / (len(trigger_id) + len(task_description_words))] * (len(trigger_id) + len(task_description_words)), dtype=torch.float)
-            X_maginal = [torch.tensor([self.null_prob]), (1 - self.null_prob) * X_maginal]
+            if self.k <= len(context_id) // (len(trigger_id) + len(task_description_words)):
+                k = self.k
+            else:
+                k = len(context_id) // (len(trigger_id) + len(task_description_words))
+            X_maginal = torch.tensor([1.0 * k] * (len(trigger_id) + len(task_description_words)), dtype=torch.float)
+            X_maginal = [torch.tensor([len(context_id) - k * (len(trigger_id) + len(task_description_words))]), X_maginal]
             X_maginal = torch.cat(X_maginal, dim=0)
+            X_maginal = X_maginal / torch.sum(X_maginal)
             P_X.append(X_maginal)
             Y_maginal = [min([abs(idx - trigger_idx) for trigger_idx in trigger_id]) for idx in context_id]
             Y_maginal = torch.tensor(Y_maginal, dtype=torch.float)
@@ -209,12 +219,15 @@ class GenOT(nn.Module):
             assert Y_maginal.size(0) == context_emb.size(0)
             assert X_maginal.size(0) == X_emb.size(0)
         
+
         X_presentations = pad_sequence(X_presentations, batch_first=True)
         Y_presentations = pad_sequence(Y_presentations, batch_first=True)
+        X_presentations = self.filler(X_presentations)
+        Y_presentations = self.filler(Y_presentations)
         P_X = pad_sequence(P_X, batch_first=True)
         P_Y = pad_sequence(P_Y, batch_first=True)
 
-        cost, pi, C = self.sinkhorn(X_presentations, Y_presentations, P_X, P_Y, cuda=True) # pi: (bs, nX, nY)
+        cost, pi, C = self.sinkhorn(X_presentations, Y_presentations, P_X, P_Y) # pi: (bs, nX, nY)
         #=====================================An action with top-k opts=================================
         # aligns = []
         # for i in range(bs):
@@ -248,12 +261,13 @@ class GenOT(nn.Module):
         values, aligns = torch.max(pi, dim=1)
         selected_words = []
         mask = torch.zeros_like(pi)
+        _pi = pi / (pi.sum(dim=2, keepdim=True) + 1e-10)
         for i in range(bs):
             _selected_words_with_mapping = {}
             nY = len(context_ids[i])
             for j in range(nY):
                 if aligns[i, j] != 0:
-                    prob = pi[i, aligns[i, j], j]
+                    prob = _pi[i, aligns[i, j], j]
                     mapping = (i, aligns[i, j], j)
                     context_word_id = context_ids[i][j]
                     context_word = self.tokenizer.decode([tokenized_input[i][context_word_id]])
@@ -268,17 +282,20 @@ class GenOT(nn.Module):
                 sorted_by_prob = list(_selected_words_with_mapping.values())
                 sorted_by_prob.sort(key=lambda x: x[0], reverse=True)
                 for item in sorted_by_prob[:self.n_selected_words]:
-                    _selected_words.append(item[-1])
-                    indicate = item[1]
-                    mask[indicate[0], indicate[1], indicate[2]] = 1
+                    if item[0] >= 1e-3:
+                        _selected_words.append(item[-1])
+                        indicate = item[1]
+                        mask[indicate[0], indicate[1], indicate[2]] = 1
             else:
                 for item in _selected_words_with_mapping.values():
-                    _selected_words.append(item[-1])
-                    indicate = item[1]
-                    mask[indicate[0], indicate[1], indicate[2]] = 1
+                    if item[0] >= 1e-3:
+                        _selected_words.append(item[-1])
+                        indicate = item[1]
+                        mask[indicate[0], indicate[1], indicate[2]] = 1
             _selected_words.extend([(num_before_head_subwords[i], head_str[i]), (num_before_tail_subwords[i], tail_str[i])])
             selected_words.append(_selected_words)
-        log_probs = torch.sum((torch.log(pi + 1e-10) * mask).view((bs, -1)), dim=-1)
+            
+        log_probs = torch.sum((torch.log(_pi + 1e-10) * mask).view((bs, -1)), dim=-1)
         return cost, torch.mean(log_probs, dim=0), selected_words, trigger_embs, num_before_head_subwords, num_before_tail_subwords
 
     def forward(self,

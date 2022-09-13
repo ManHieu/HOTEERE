@@ -1,3 +1,4 @@
+from curses import meta
 from dataclasses import dataclass, field
 from typing import List, Optional
 import transformers
@@ -39,6 +40,11 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "The output directory where the results and model weights will be written."}
     )
 
+    num_warm_up: int = field(
+        default=1,
+        metadata={"help": "Number warm up steps"}
+    )
+
     selector_lr: float = field(
         default=5e-5,
         metadata={"help": "Learning rate of selector"}
@@ -64,19 +70,9 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "seeding for reproductivity"}
     )
 
-    weight_source_perserve_ev_reward: float = field(
-        default=0.1,
-        metadata={"help": "weight of preserving source event's meaning reward"}
-    )
-
     weight_gen_perserve_ev_reward: float = field(
         default=0.1,
         metadata={"help": "weight of preserving generated event's meaning reward"}
-    )
-
-    weight_sent_diversity_reward: float = field(
-        default=0.1,
-        metadata={"help": "weight of the sentence's diversity reward"}
     )
 
     weight_mle: float = field(
@@ -117,24 +113,24 @@ class ModelArguments:
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
 
-    null_sentence_prob: float = field(
-        default=0.5,
-        metadata={"help": "Probability of null senentence in selector"}
-    )
-
     kg_weight: float = field(
         default=0.5,
         metadata={"help": "Probability of KG senentence in selector"}
     )
 
+    n_align_sents: Optional[int] = field(
+        default=5,
+        metadata={"help": "Number align sentences"}
+    )
+
+    n_align_words: Optional[int] = field(
+        default=10,
+        metadata={"help": "Number align words"}
+    )
+
     n_selected_sents: Optional[int] = field(
         default=None,
         metadata={"help": "Number selected sentences"}
-    )
-
-    null_word_prob: float = field(
-        default=0.5,
-        metadata={"help": "Probability of null word in generator"}
     )
 
     n_selected_words: Optional[int] = field(
@@ -145,6 +141,11 @@ class ModelArguments:
     output_max_length: Optional[int] = field(
         default=64,
         metadata={"help": "Max length of Output sequences"}
+    )
+
+    use_rnn: Optional[bool] = field(
+        default=False,
+        metadata={'help': "Use rnn to imporve sentence consequentive ability"}
     )
 
 

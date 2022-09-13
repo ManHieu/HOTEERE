@@ -59,18 +59,18 @@ def run(defaults: Dict):
                             batch_size=data_args.batch_size,
                             data_dir=data_args.data_dir,
                             fold=i)
-        number_step_in_epoch = len(dm.train_dataloader())/training_args.gradient_accumulation_steps
+        number_step_in_epoch = len(dm.train_dataloader())
         output_dir = os.path.join(
             training_args.output_dir,
             f'{args.job}'
             f'-slr{training_args.selector_lr}'
             f'-glr{training_args.generator_lr}'
             f'-eps{training_args.num_epoches}'
-            f'-reward_weight{training_args.weight_source_perserve_ev_reward}_{training_args.weight_gen_perserve_ev_reward}_{training_args.weight_sent_diversity_reward}'
+            f'-reward_weight{training_args.weight_gen_perserve_ev_reward}'
             f'-mle_weight{training_args.weight_mle}'
             f'-selector_weight{training_args.weight_selector_loss}'
-            f'-SOT_weight{model_args.null_sentence_prob}_{model_args.kg_weight}_{model_args.n_selected_sents}'
-            f'-WOT_weight{model_args.null_word_prob}_{model_args.n_selected_words}')
+            f'-SOT_{model_args.kg_weight}_{model_args.n_selected_sents}'
+            f'-WOT_{model_args.n_selected_words}')
         try:
             os.mkdir(output_dir)
         except FileExistsError:
@@ -91,28 +91,28 @@ def run(defaults: Dict):
                                     )
         lr_logger = LearningRateMonitor(logging_interval='step')
 
-        model = HOTEERE(weight_source_perserve_ev_reward=training_args.weight_source_perserve_ev_reward,
-                        weight_gen_perserve_ev_reward=training_args.weight_gen_perserve_ev_reward,
-                        weight_sent_diversity_reward=training_args.weight_sent_diversity_reward,
+        model = HOTEERE(weight_gen_perserve_ev_reward=training_args.weight_gen_perserve_ev_reward,
                         weight_mle=training_args.weight_mle,
                         num_training_step=int(number_step_in_epoch * training_args.num_epoches),
                         selector_lr=training_args.selector_lr,
                         generator_lr=training_args.generator_lr,
                         weight_selector_loss=training_args.weight_selector_loss,
-                        OT_eps=0.1,
-                        OT_max_iter=50,
-                        OT_reduction='mean',
+                        OT_eps=1e-3,
+                        OT_max_iter=75,
+                        OT_reduction='sum',
                         dropout=0.5,
-                        null_sentence_prob=model_args.null_sentence_prob,
+                        num_warm_up=training_args.num_warm_up,
                         kg_weight=model_args.kg_weight,
                         finetune_selector_encoder=training_args.finetune_selector_encoder,
                         finetune_in_OT_generator=training_args.finetune_in_OT_generator,
                         encoder_name_or_path=model_args.model_name_or_path,
                         tokenizer_name_or_path=model_args.tokenizer_name_or_path,
+                        n_align_sents=model_args.n_align_sents,
+                        n_align_words=model_args.n_align_words,
                         n_selected_sents=model_args.n_selected_sents,
-                        null_word_prob=model_args.null_word_prob,
                         n_selected_words=model_args.n_selected_words,
-                        output_max_length=model_args.output_max_length)
+                        output_max_length=model_args.output_max_length,
+                        use_rnn=model_args.use_rnn)
         
         trainer = Trainer(
             # logger=tb_logger,
@@ -154,23 +154,24 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [3,]), #  5, 7, 10, 15
-        'batch_size': trial.suggest_categorical('batch_size', [4]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [7, 10, 15]),
+        'num_warm_up': trial.suggest_categorical('num_warm_up', [2]),
+        'batch_size': trial.suggest_categorical('batch_size', [8]),
         'weight_gen_perserve_ev_reward': trial.suggest_categorical('weight_gen_perserve_ev_reward', [0.1]),
-        'weight_sent_diversity_reward': trial.suggest_categorical('weight_sent_diversity_reward', [0.1]),
-        'weight_mle': trial.suggest_categorical('weight_mle', [0.95]), # 0.75, 0.9, 
-        'selector_lr': trial.suggest_categorical('selector_lr', [1e-5,]),  # 3e-5, 5e-5, 7e-5, 1e-4, 3e-4, 5e-4, 8e-4
-        'generator_lr': trial.suggest_categorical('generator_lr', [5e-4,]), # 1e-4, 3e-4, 8e-4
-        'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.5]), # 0.1, 0.25,
+        'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
+        'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 8e-6, 1e-5]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 1e-4, 5e-4]),
+        'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
         'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
-        'null_sentence_prob': trial.suggest_categorical('null_sentence_prob', [0.75]),
-        'null_word_prob': trial.suggest_categorical('null_word_prob', [0.95]),
-        'n_selected_sents': trial.suggest_categorical('n_selected_sents', [3]),
-        'n_selected_words': trial.suggest_categorical('n_selected_words', [10]),
-        'output_max_length': trial.suggest_categorical('output_max_length', [32]),
-        'finetune_selector_encoder': trial.suggest_categorical('finetune_selector_encoder', [True]),
-        'finetune_in_OT_generator': trial.suggest_categorical('finetune_in_OT_generator', [True]),
-    }
+        'n_align_sents': trial.suggest_categorical('n_align_sents', [2]),
+        'n_align_words': trial.suggest_categorical('n_align_words', [5]),
+        'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
+        'n_selected_words': trial.suggest_categorical('n_selected_words', [None, 10]),
+        'output_max_length': trial.suggest_categorical('output_max_length', [64]),
+        'finetune_selector_encoder': trial.suggest_categorical('finetune_selector_encoder', [False]),
+        'finetune_in_OT_generator': trial.suggest_categorical('finetune_in_OT_generator', [False]),
+        'use_rnn': trial.suggest_categorical('use_rnn', [True])
+    } 
 
     seed_everything(1741, workers=True)
 
@@ -182,7 +183,7 @@ def objective(trial: optuna.Trial):
     if args.tuning:
         record_file_name = f'result_{args.job}.txt'
 
-    if f1 > 0.5:
+    if f1 > 0.6:
         with open(record_file_name, 'a', encoding='utf-8') as f:
             f.write(f"Dataset: {dataset} \n")
             f.write(f"Random_state: 1741\n")
@@ -210,7 +211,7 @@ if __name__ == '__main__':
         print("tuning ......")
         # sampler = optuna.samplers.TPESampler(seed=1741)
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=50)
+        study.optimize(objective, n_trials=19)
         trial = study.best_trial
         print('Accuracy: {}'.format(trial.value))
         print("Best hyperparameters: {}".format(trial.params))
