@@ -71,4 +71,50 @@ class ECIOuputFormat(BaseOutputFormat):
         return head_position, tail_position
         
 
+@register_output_format
+class REOuputFormat(BaseOutputFormat):
+    template = "{label}.[{head}] is {label} [{tail}] and {detail}"
+    name = 'RE_output'
 
+    def format_output(self, 
+                    head: str, tail: str, label: str,
+                    important_words: List[Tuple[int, str]] = None, 
+                    num_before_head_subword: int = None, 
+                    num_before_tail_subword: int = None) -> str:
+        # sorted as appearance order
+        if important_words != None:
+            important_words.sort(key=lambda x: x[0])
+            detail = []
+            for item in important_words:
+                if item[0] == num_before_head_subword or item[0] == num_before_tail_subword:
+                    assert item[1] == head or item[1] == tail
+                    detail.append(f'[{item[1]}]')
+                else:
+                    detail.append(item[1])
+            detail = ' '.join(detail)
+            template = self.template.format(head=head, label=label, tail=tail, detail=detail)
+            return template
+        else:
+            template = "{label}. [{head}] is {label} [{tail}]".format(head=head, label=label, tail=tail)
+            return template
+    
+    def find_trigger_position(self, generated_seq: str, head: str, tail: str):
+        head = f'[{head}]'
+        tail = f'[{tail}]'
+        re_head = re.compile(re.escape(head), flags=re.I)
+        re_tail = re.compile(re.escape(tail), flags=re.I)
+        try:
+            head_position = [(m.start() + 1, m.start() + len(head) - 1) for m in re.finditer(re_head, generated_seq)]
+            tail_position = [(m.start() + 1, m.start() + len(tail) - 1) for m in re.finditer(re_tail, generated_seq)]
+        except:
+            pdb.set_trace()
+        return head_position, tail_position
+
+
+@register_output_format
+class TREOuputFormat(REOuputFormat):
+    name = 'TRE_output'
+
+@register_output_format
+class SREOuputFormat(REOuputFormat):
+    name = 'SRE_output'

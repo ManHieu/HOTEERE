@@ -93,15 +93,16 @@ class Preprocessor(object):
                         my_dict = pickle.load(f)
                         corpus.append(my_dict)
                 else:
-                    my_dict = self.reader(dir_name, file_name)
-                    if my_dict != None:
-                        doc_presentation = sentence_encode([sent['content'] for sent in my_dict['sentences']])
-                        my_dict['doc_presentation'] = doc_presentation
-                        my_dict = self.retrieve_knowledge_sentences(my_dict)
-                        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-                        with open(cache_file, 'wb') as f:
-                            pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
-                        corpus.append(my_dict)
+                    # my_dict = self.reader(dir_name, file_name)
+                    # if my_dict != None:
+                    #     doc_presentation = sentence_encode([sent['content'] for sent in my_dict['sentences']])
+                    #     my_dict['doc_presentation'] = doc_presentation
+                    #     my_dict = self.retrieve_knowledge_sentences(my_dict)
+                    #     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                    #     with open(cache_file, 'wb') as f:
+                    #         pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
+                    #     corpus.append(my_dict)
+                    pass
         
         return corpus
     
@@ -134,8 +135,8 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         processor = Preprocessor(dataset, datapoint)
         corpus = processor.load_dataset(corpus_dir)
         corpus = list(sorted(corpus, key=lambda x: x['doc_id']))
-        train, test = train_test_split(corpus, train_size=100.0/120, test_size=20.0/120, random_state=seed)
-        train, validate = train_test_split(train, train_size=80.0/100., test_size=20.0/100, random_state=seed)
+        train, test = train_test_split(corpus, train_size=100.0/120, test_size=20.0/120, random_state=7890)
+        train, validate = train_test_split(train, train_size=80.0/100., test_size=20.0/100, random_state=7890)
 
         processed_path = 'datasets/hievents_v2/train.json'
         processed_train = processor.process_and_save(train, processed_path, save_cache)

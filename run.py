@@ -119,7 +119,7 @@ def run(defaults: Dict):
             accelerator="gpu", 
             devices=[args.gpu],
             accumulate_grad_batches=training_args.gradient_accumulation_steps,
-            num_sanity_val_steps=0, 
+            num_sanity_val_steps=3, 
             val_check_interval=1.0, # use float to check every n epochs 
             callbacks = [lr_logger, checkpoint_callback],
         )
@@ -152,12 +152,12 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [7, 10, 15, 20]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [7, 10, 20]),
         'num_warm_up': trial.suggest_categorical('num_warm_up', [1, 2]),
         'batch_size': trial.suggest_categorical('batch_size', [8]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
-        'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 8e-6, 1e-5]),
-        'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 7e-5, 1e-4, 3e-4, 5e-4]),
+        'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 1e-5, 5e-5, 1e-4, 5e-4]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
         'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
         'n_align_sents': trial.suggest_categorical('n_align_sents', [1, 2]),
@@ -203,7 +203,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--tuning', action='store_true', default=False, help='tune hyperparameters')
 
     args, remaining_args = parser.parse_known_args()
-    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"logs_{args.job}/")
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"logs_{args.job}")
     if args.tuning:
         print("tuning ......")
         # sampler = optuna.samplers.TPESampler(seed=1741)

@@ -161,6 +161,12 @@ class HOTEERE(pl.LightningModule):
             if batch[0].input_format_type == 'ECI_input':
                 task_description_words = ['causal relation']
                 task = 'ECI'
+            elif batch[0].input_format_type == 'TRE_input':
+                task_description_words = ['temporal relation']
+                task = 'TRE'
+            elif batch[0].input_format_type == 'SRE_input':
+                task_description_words = ['event hierarchical relation']
+                task = 'SRE'
             word_OT_cost, generator_log_probs, mle_loss, \
             predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
@@ -189,13 +195,23 @@ class HOTEERE(pl.LightningModule):
             self.log_dict({'s_rl': selector_rl_loss, 
                         'g_rl': generator_rl_loss,
                         }, prog_bar=False)
+            if torch.isnan(word_OT_cost).any() or torch.isinf(word_OT_cost).any() \
+                or torch.isnan(sent_OT_cost).any() or torch.isinf(sent_OT_cost).any() \
+                or torch.isnan(loss).any() or torch.isinf(loss).any():
+                return None
             
         else:
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
             if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['cause', 'because']
+                task_description_words = ['causal relation']
                 task = 'ECI'
+            elif batch[0].input_format_type == 'TRE_input':
+                task_description_words = ['temporal relation']
+                task = 'TRE'
+            elif batch[0].input_format_type == 'SRE_input':
+                task_description_words = ['event hierarchical relation']
+                task = 'SRE'
             word_OT_cost, generator_log_probs, mle_loss, \
             predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
@@ -230,8 +246,14 @@ class HOTEERE(pl.LightningModule):
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
             if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['cause', 'because']
+                task_description_words = ['causal relation']
                 task = 'ECI'
+            elif batch[0].input_format_type == 'TRE_input':
+                task_description_words = ['temporal relation']
+                task = 'TRE'
+            elif batch[0].input_format_type == 'SRE_input':
+                task_description_words = ['event hierarchical relation']
+                task = 'SRE'
             word_OT_cost, generator_log_probs, mle_loss, \
             predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
@@ -252,8 +274,14 @@ class HOTEERE(pl.LightningModule):
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
             if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['cause', 'because']
+                task_description_words = ['causal relation']
                 task = 'ECI'
+            elif batch[0].input_format_type == 'TRE_input':
+                task_description_words = ['temporal relation']
+                task = 'TRE'
+            elif batch[0].input_format_type == 'SRE_input':
+                task_description_words = ['event hierarchical relation']
+                task = 'SRE'
             word_OT_cost, generator_log_probs, mle_loss, \
             predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
@@ -279,11 +307,12 @@ class HOTEERE(pl.LightningModule):
         for output in outputs:
             pred_seqs.extend(output[0])
             gold_seqs.extend(output[1])
-        p, r, f1 = compute_f1(pred_seqs, gold_seqs, task=task)
+        p, r, f1, report = compute_f1(pred_seqs, gold_seqs, task=task)
         self.log('f1_dev', f1, prog_bar=True)
         self.log_dict({'p_dev': p, 'r_dev': r}, prog_bar=False)
         if self.best_vals==None or f1 >= self.best_vals[-1]:
-            print(f"\nBetter: {(p, r, f1)}\n")
+            print(f"\n\nBetter: {(p, r, f1)}\n\n")
+            print(f"{report} \n\n")
             self.best_vals = [p, r, f1]
         return f1
 
@@ -301,8 +330,14 @@ class HOTEERE(pl.LightningModule):
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
             if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['cause', 'because']
+                task_description_words = ['causal relation']
                 task = 'ECI'
+            elif batch[0].input_format_type == 'TRE_input':
+                task_description_words = ['temporal relation']
+                task = 'TRE'
+            elif batch[0].input_format_type == 'SRE_input':
+                task_description_words = ['event hierarchical relation']
+                task = 'SRE'
             word_OT_cost, generator_log_probs, mle_loss, \
             predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
@@ -322,8 +357,14 @@ class HOTEERE(pl.LightningModule):
             contexts, head_positions, tail_positions, labels, \
             head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
             if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['cause', 'because']
+                task_description_words = ['causal relation']
                 task = 'ECI'
+            elif batch[0].input_format_type == 'TRE_input':
+                task_description_words = ['temporal relation']
+                task = 'TRE'
+            elif batch[0].input_format_type == 'SRE_input':
+                task_description_words = ['event hierarchical relation']
+                task = 'SRE'
             word_OT_cost, generator_log_probs, mle_loss, \
             predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
                                                             input_format_type=batch[0].input_format_type,
@@ -349,9 +390,10 @@ class HOTEERE(pl.LightningModule):
         for output in outputs:
             pred_seqs.extend(output[0])
             gold_seqs.extend(output[1])
-        p, r, f1 = compute_f1(pred_seqs, gold_seqs, task=task)
+        p, r, f1, report = compute_f1(pred_seqs, gold_seqs, task=task)
         self.log_dict({'hp_metric': f1})
         self.log_dict({'hp_metric/p_test': p, 'hp_metric/r_test': r})
+        print(f"{report} \n\n")
         self.model_results = (p, r, f1)
         return f1
 

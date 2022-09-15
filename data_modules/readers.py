@@ -1,5 +1,6 @@
 from itertools import combinations
 import json
+import pdb
 import bs4
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -230,7 +231,10 @@ def tml_reader(dir_name, file_name):
     my_dict["doc_content"] = MY_TEXT
     my_dict["sentences"] = []
     my_dict["relation_dict"] = {}
-    sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
+    try:
+        sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
+    except:
+        pdb.set_trace()
     for sent in sents_tokenized:
         sent_dict = {}
         sent_dict["sent_id"] = sent['id'] - 1

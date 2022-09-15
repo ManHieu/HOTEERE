@@ -152,13 +152,13 @@ class HiEveDataset(EEREDataset):
     name = 'HiEve'
     sample_rate = 0.4
     natural_relation_types = {
-                            "SuperSub": "contains", 
-                            "SubSuper": "is contained by", 
-                            "Coref": "equals", 
-                            "NoRel": "has no relation to"
+                            "SuperSub": "including", 
+                            "SubSuper": "part of", 
+                            "Coref": "coreference", 
+                            "NoRel": "no relation"
                             }
-    input_format_type = None
-    output_format_type = None
+    input_format_type = 'SRE_input'
+    output_format_type = 'SRE_output'
 
 
 @register_dataset
@@ -166,13 +166,13 @@ class MATRESDataset(EEREDataset):
     name = 'MATRES'
     sample_rate = 1
     natural_relation_types = {
-                            "BEFORE": "happens before", 
-                            "AFTER": "happens after", 
-                            "EQUAL": "happnes same time", 
-                            "VAGUE": "has no relation to"
+                            "BEFORE": "before", 
+                            "AFTER": "after", 
+                            "EQUAL": "same time", 
+                            "VAGUE": "no relation"
                             }
-    input_format_type = None
-    output_format_type = None
+    input_format_type = 'TRE_input'
+    output_format_type = 'TRE_output'
 
 
 @register_dataset

@@ -68,7 +68,48 @@ class GenOT(nn.Module):
                 r = (tp + 1)/(n_gold + 1)
                 f1 = 2 * p * r / (p + r + 1e-9)
                 return f1
-    
+        elif task == 'TRE':
+            label_idx={
+            "before": 0, 
+            "after": 1, 
+            "same time": 2, 
+            "no relation": 3
+            }
+        elif task == 'SRE':
+            label_idx={
+            "including": 0, 
+            "part of": 1, 
+            "coreference": 2, 
+            "no relation": 3
+            }
+        n_predict = 0
+        n_gold = 0
+        tp = 0
+        preds = []
+        golds = []
+        wrong_struct = 0
+        for predict, gold in zip(predicted_seqs, gold_seqs):
+            for key, item in label_idx.items():
+                if predict.startswith(key) and key != 'no relation':
+                    n_predict = n_predict + 1
+                if gold.startswith(key) and key != 'no relation':
+                    n_gold = n_gold + 1
+                if predict.startswith(key) and gold.startswith(key) and key != 'no relation':
+                    tp = tp + 1
+
+            if not any([predict.startswith(k) for k in list(label_idx.keys())]):
+                wrong_struct = wrong_struct + 1
+        
+        if wrong_struct == len(predicted_seqs):
+            return -1.0
+        elif n_predict==n_gold==0:
+            return 0.9
+        else:
+            p = (tp + 1)/(n_predict + 1)
+            r = (tp + 1)/(n_gold + 1)
+            f1 = 2 * p * r / (p + r + 1e-9)
+            return f1
+
     @torch.no_grad()
     def compute_preserving_event_in_predict_seq_reward(self, predicted_seq: str, trigger_emb, head_pos, tail_pos):
         if len(head_pos) == 0 and len(tail_pos) == 0:
@@ -207,8 +248,10 @@ class GenOT(nn.Module):
                 k = self.k
             else:
                 k = len(context_id) // (len(trigger_id) + len(task_description_words))
+            if k == 0:
+                k = 1
             X_maginal = torch.tensor([1.0 * k] * (len(trigger_id) + len(task_description_words)), dtype=torch.float)
-            X_maginal = [torch.tensor([len(context_id) - k * (len(trigger_id) + len(task_description_words))]), X_maginal]
+            X_maginal = [torch.tensor([max(0, len(context_id) - k * (len(trigger_id) + len(task_description_words)))]), X_maginal]
             X_maginal = torch.cat(X_maginal, dim=0)
             X_maginal = X_maginal / torch.sum(X_maginal)
             P_X.append(X_maginal)

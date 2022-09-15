@@ -163,6 +163,7 @@ class SinkhornDistance(nn.Module):
                 print(f'error threshold: {self.error_threshold}')
                 print(C.max())
                 print(C.min())
+                pdb.set_trace()
                 u = torch.where(unstable.repeat(1, u.size(-1)), u_prev, u)
                 v = torch.where(unstable.repeat(1, v.size(-1)), v_prev, v)
                 break

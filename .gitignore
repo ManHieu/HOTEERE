@@ -9,3 +9,8 @@ lightning_logs/*
 tuning_experiments/*
 result_ESL.txt
 good_params.txt
+logs_ESL/*
+logs_MATRES/*
+result_MATRES.txt
+logs_HiEve/*
+result_HiEve.txt

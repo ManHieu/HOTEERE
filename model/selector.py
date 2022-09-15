@@ -125,8 +125,10 @@ class SentenceSelectOT(nn.Module):
                 k = self.k
             else:
                 k = len(context_id) // len(host_id)
+            if k == 0:
+                k = 1
             X_maginal = torch.tensor([1.0 * k] * len(host_id), dtype=torch.float)
-            X_maginal = [torch.tensor([len(context_id) - k * len(host_id)]), X_maginal]
+            X_maginal = [torch.tensor([max(0, len(context_id) - k * len(host_id))]), X_maginal]
             X_maginal = torch.cat(X_maginal, dim=0)
             X_maginal = X_maginal / torch.sum(X_maginal)
             P_X.append(X_maginal)
