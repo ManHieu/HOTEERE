@@ -121,8 +121,7 @@ class AtomicRetriever(object):
 
 class ConceptNetRetriever(object):
     def __init__(self) -> None:
-        # self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
-        self.chosen_rel = ['CapableOf', 'IsA', 'Causes', 'MannerOf', 'CausesDesire', 'UsedFor', 'HasSubevent', 'HasPrerequisite', 'NotDesires', 'PartOf', 'HasA', 'Entails', 'ReceivesAction', 'UsedFor', 'CreatedBy', 'MadeOf', 'Desires']
+        self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
         self.rel_to_text  = {
             'CapableOf': 'is capable of', 
             'IsA': 'is a', 
@@ -138,6 +137,7 @@ class ConceptNetRetriever(object):
             'CreatedBy': 'is created by', 
             'Desires': 'desires'
         }
+        self.chosen_rel = list(self.rel_to_text.keys())
         # self.p = Pipeline('english', cache_dir='./trankit')
         self.seq_emb_cache = {}
     

@@ -193,7 +193,6 @@ class CTBDataset(EEREDataset):
     name = 'Causal-TB'
     sample_rate = 1
     natural_relation_types = {
-                            'FALLING_ACTION': 'is caused by', 
                             'PRECONDITION': 'causes', 
                             'NoRel': "has no relation to"
                             }
