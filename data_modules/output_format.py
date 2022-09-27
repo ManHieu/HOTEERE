@@ -114,6 +114,37 @@ class REOuputFormat(BaseOutputFormat):
 @register_output_format
 class TREOuputFormat(REOuputFormat):
     name = 'TRE_output'
+    template = "{label}.[{head}] {label2} [{tail}] and {detail}"
+
+    def format_output(self, 
+                    head: str, tail: str, label: str,
+                    important_words: List[Tuple[int, str]] = None, 
+                    num_before_head_subword: int = None, 
+                    num_before_tail_subword: int = None) -> str:
+        # sorted as appearance order
+        if label in ['before', 'after', 'same time']:
+            label2 = 'happends ' + label
+        elif label == 'no relation':
+            label2 = 'has no relation with'
+        else:
+            raise Exception("Cannot recognize the label!!")
+
+        if important_words != None:
+            important_words.sort(key=lambda x: x[0])
+            detail = []
+            for item in important_words:
+                if item[0] == num_before_head_subword or item[0] == num_before_tail_subword:
+                    assert item[1] == head or item[1] == tail
+                    detail.append(f'[{item[1]}]')
+                else:
+                    detail.append(item[1])
+            detail = ' '.join(detail)
+            template = self.template.format(head=head, label=label, tail=tail, detail=detail, label2=label2)
+        else:
+            template = "{label}. [{head}] {label2} [{tail}]".format(head=head, label=label, tail=tail, label2=label2)
+        
+        # print(template)
+        return template
 
 @register_output_format
 class SREOuputFormat(REOuputFormat):

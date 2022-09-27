@@ -14,3 +14,5 @@ logs_MATRES/*
 result_MATRES.txt
 logs_HiEve/*
 result_HiEve.txt
+logs_Causal-TB/*
+result_Causal-TB.txt

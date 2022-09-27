@@ -78,6 +78,7 @@ class Preprocessor(object):
                                 with open(cache_file, 'wb') as f:
                                     pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
                                 corpus.append(my_dict)
+                            # pass
                             # print(my_dict)
         else:
             onlyfiles = [f for f in os.listdir(dir_name) if os.path.isfile(os.path.join(dir_name, f))]
@@ -176,7 +177,7 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
     if dataset == 'ESL':
         datapoint = 'hoteere_data_point'
         kfold = KFold(n_splits=5)
-        processor = Preprocessor(dataset, datapoint, intra=True, inter=False)
+        processor = Preprocessor(dataset, datapoint, intra=True, inter=True)
         corpus_dir = './datasets/EventStoryLine/annotated_data/v0.9/'
         corpus = processor.load_dataset(corpus_dir)
 
@@ -229,20 +230,11 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         folds = {}
         for fold, (train_ids, valid_ids) in enumerate(kfold.split(corpus)):
             if fold==load_fold:
-                try:
-                    os.mkdir(f"./datasets/EventStoryLine/{fold}")
-                except FileExistsError:
-                    pass
-
                 train = [corpus[id] for id in train_ids]
                 # print(train[0])
                 validate = [corpus[id] for id in valid_ids]
-            
-                processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
-                processed_train = processor.process_and_save(train, processed_path, save_cache)
-
-                processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-                processed_val = processor.process_and_save(validate, processed_path, save_cache)
+                processed_train = processor.process_and_save(train, None, save_cache)
+                processed_val = processor.process_and_save(validate, None, save_cache)
                 
                 folds[fold] = [processed_train, processed_val, processed_val]
         return folds
@@ -265,7 +257,8 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
 
         processed_path = 'datasets/MATRES/test.json'
         processed_test = processor.process_and_save(test, processed_path, save_cache)
-        return {0: [processed_train, processed_val, processed_test]}
+        # TODO: need to fix
+        return {0: [processed_train, processed_test, processed_test]}
 
     print(f"We have not supported {dataset} dataset!")
     return None

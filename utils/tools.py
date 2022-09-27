@@ -26,14 +26,14 @@ def compute_f1(predicted_seqs: List[str], gold_seqs: List[str], task: str):
                     wrong_struct = wrong_struct + 1
 
             if wrong_struct == len(predicted_seqs):
-                return 0.0, 0.0, 0.0
+                return 0.0, 0.0, 0.0, (0, 0, 0)
             elif n_predict==n_gold==0:
-                return 0.1, 0.1, 0.1
+                return 0.1, 0.1, 0.1, (0.1, 0.1, 0.1)
             else:
                 p = (tp + 1)/(n_predict + 1)
                 r = (tp + 1)/(n_gold + 1)
                 f1 = 2 * p * r / (p + r + 1e-9)
-                return p, r, f1
+                return p, r, f1, (p, r, f1)
         
         elif task == 'TRE':
             label_idx={
@@ -60,15 +60,15 @@ def compute_f1(predicted_seqs: List[str], gold_seqs: List[str], task: str):
             for key, item in label_idx.items():
                 if predict.startswith(key):
                     preds.append(item)
-                    if key != 'no relation':
+                    if key not in ['no relation', 'coreference']:
                         n_predict = n_predict + 1
 
                 if gold.startswith(key):
                     golds.append(item)
-                    if key != 'no relation':
+                    if key not in ['no relation', 'coreference']:
                         n_gold = n_gold + 1
 
-                if predict.startswith(key) and gold.startswith(key) and key != 'no relation':
+                if predict.startswith(key) and gold.startswith(key) and key not in ['no relation', 'coreference']:
                     tp = tp + 1
 
             if not any([predict.startswith(k) for k in list(label_idx.keys())]):
