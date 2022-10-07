@@ -121,7 +121,7 @@ class AtomicRetriever(object):
 
 class ConceptNetRetriever(object):
     def __init__(self) -> None:
-        self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
+        # self.sim_evaluator = SentenceTransformer('all-MiniLM-L12-v1')
         self.rel_to_text  = {
             'CapableOf': 'is capable of', 
             'IsA': 'is a', 

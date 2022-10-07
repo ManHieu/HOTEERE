@@ -177,7 +177,7 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
     if dataset == 'ESL':
         datapoint = 'hoteere_data_point'
         kfold = KFold(n_splits=5)
-        processor = Preprocessor(dataset, datapoint, intra=True, inter=True)
+        processor = Preprocessor(dataset, datapoint, intra=True, inter=False)
         corpus_dir = './datasets/EventStoryLine/annotated_data/v0.9/'
         corpus = processor.load_dataset(corpus_dir)
 

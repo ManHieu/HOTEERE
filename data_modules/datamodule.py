@@ -42,7 +42,7 @@ class EEREDataModule(pl.LightningDataModule):
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             collate_fn=dataset.my_collate
         )
         return dataloader
@@ -55,7 +55,7 @@ class EEREDataModule(pl.LightningDataModule):
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             collate_fn=dataset.my_collate
         )
         return dataloader
