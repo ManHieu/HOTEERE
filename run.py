@@ -183,7 +183,7 @@ def objective(trial: optuna.Trial):
     if args.tuning:
         record_file_name = f'result_{args.job}.txt'
 
-    if f1 > 0.6:
+    if f1 > 0.5:
         with open(record_file_name, 'a', encoding='utf-8') as f:
             f.write(f"Dataset: {dataset} \n")
             f.write(f"Random_state: 1741\n")
