@@ -136,8 +136,7 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         processor = Preprocessor(dataset, datapoint)
         corpus = processor.load_dataset(corpus_dir)
         corpus = list(sorted(corpus, key=lambda x: x['doc_id']))
-        train, test = train_test_split(corpus, train_size=100.0/120, test_size=20.0/120, random_state=7890)
-        train, validate = train_test_split(train, train_size=80.0/100., test_size=20.0/100, random_state=7890)
+        train, test, validate = corpus[:70], corpus[80:], corpus[70: 80]
 
         processed_path = 'datasets/hievents_v2/train.json'
         processed_train = processor.process_and_save(train, processed_path, save_cache)

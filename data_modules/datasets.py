@@ -150,10 +150,10 @@ class EEREDataset(BaseDataset):
 @register_dataset
 class HiEveDataset(EEREDataset):
     name = 'HiEve'
-    sample_rate = 0.4
+    sample_rate = 1.0
     natural_relation_types = {
                             "SuperSub": "including", 
-                            "SubSuper": "part of", 
+                            "SubSuper": "a part of", 
                             "Coref": "coreference", 
                             "NoRel": "no relation"
                             }

@@ -48,6 +48,14 @@ def tsvx_reader(dir_name, file_name):
         else:
             raise ValueError("Reading a file not in HiEve tsvx format...")
     
+    # add NoRel 
+    # event_pairs = combinations(my_dict['event_dict'].keys(), 2)
+    # for eid1, eid2 in event_pairs:
+    #     e1, e2 = my_dict['event_dict'][eid1], my_dict['event_dict'][eid2]
+    #     sid1, sid2 = e1['sent_id'], e2['sent_id']
+    #     if sid1 == sid2 and my_dict['relation_dict'].get(f'{(eid1, eid2)}') == None and my_dict['relation_dict'].get(f'{(eid2, eid1)}') ==None:
+    #         my_dict['relation_dict'][f'{(eid1, eid2)}'] = 'NoRel'
+
     # Split document into sentences
     sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
     for sent in sents_tokenized:

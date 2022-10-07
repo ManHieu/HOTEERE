@@ -78,7 +78,7 @@ class GenOT(nn.Module):
         elif task == 'SRE':
             label_idx={
             "including": 0, 
-            "part of": 1, 
+            "a part of": 1, 
             "coreference": 2, 
             "no relation": 3
             }
