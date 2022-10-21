@@ -50,7 +50,7 @@ class HOTEERE(pl.LightningModule):
         self.num_warm_up = num_warm_up
 
         self.hidden_size = 768 if 'base' in encoder_name_or_path else 1024
-        self.selector = SentenceSelectOT(hidden_size=self.hidden_size,
+        self.selector = SentenceSelectOT(hidden_size=768,
                                         OT_eps=OT_eps,
                                         OT_max_iter=OT_max_iter,
                                         OT_reduction=OT_reduction,
@@ -333,7 +333,7 @@ class HOTEERE(pl.LightningModule):
                 task_description_words = ['causal relation']
                 task = 'ECI'
             elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation']
+                task_description_words = ['temporal relation', 'timeline']
                 task = 'TRE'
             elif batch[0].input_format_type == 'SRE_input':
                 task_description_words = ['event hierarchical relation']
