@@ -6,8 +6,8 @@ import torch
 import networkx as nx
 from transformers import AutoModel, AutoTokenizer
 
-# sentence_encoder = AutoModel.from_pretrained("/vinai/hieumdt/pretrained_models/roberta-base", output_hidden_states=True)
-# encoder_tokenizer = AutoTokenizer.from_pretrained("/vinai/hieumdt/pretrained_models/roberta-base", unk_token='<unk>')
+sentence_encoder = AutoModel.from_pretrained("/vinai/hieumdt/pretrained_models/roberta-base", output_hidden_states=True)
+encoder_tokenizer = AutoTokenizer.from_pretrained("/vinai/hieumdt/pretrained_models/roberta-base", unk_token='<unk>')
 
 
 def tokenized_to_origin_span(text: str, token_list: List[str]):

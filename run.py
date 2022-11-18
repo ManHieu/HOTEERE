@@ -154,7 +154,7 @@ def objective(trial: optuna.Trial):
     defaults = {
         'num_epoches': trial.suggest_categorical('num_epoches', [7, 10, 15, 20]),
         'num_warm_up': trial.suggest_categorical('num_warm_up', [1, 2]),
-        'batch_size': trial.suggest_categorical('batch_size', [8]),
+        'batch_size': trial.suggest_categorical('batch_size', [2]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
         'selector_lr': trial.suggest_categorical('selector_lr', [5e-6, 8e-6, 1e-5]),
         'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 7e-5, 1e-4, 3e-4, 5e-4]),

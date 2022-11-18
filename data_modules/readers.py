@@ -6,18 +6,18 @@ from collections import defaultdict
 # from nltk import sent_tokenize
 from bs4 import BeautifulSoup as Soup
 import csv
-# from trankit import Pipeline
+from trankit import Pipeline
 from data_modules.utils import find_m_id, find_sent_id, get_mention_span, id_lookup, sent_id_lookup, span_SENT_to_DOC, tokenized_to_origin_span
-# from allennlp.predictors.predictor import Predictor
-# import allennlp_models.tagging
+from allennlp.predictors.predictor import Predictor
+import allennlp_models.tagging
 
-# predictor = Predictor.from_path("https://storage.googleapis.com/allennlp-public-models/coref-spanbert-large-2021.03.10.tar.gz")
+predictor = Predictor.from_path("https://storage.googleapis.com/allennlp-public-models/coref-spanbert-large-2021.03.10.tar.gz")
 
-# p = Pipeline('english', cache_dir='./trankit')
-# p.add('danish')
-# p.add('spanish')
-# p.add('turkish')
-# p.add('urdu')
+p = Pipeline('english', cache_dir='./trankit')
+p.add('danish')
+p.add('spanish')
+p.add('turkish')
+p.add('urdu')
 
 
 # =========================
@@ -641,6 +641,109 @@ def ctb_cat_reader(dir_name, file_name):
         coref_clusters.append(dict(cluster))
     my_dict['coref'] = coref_clusters
 
+    return my_dict
+
+
+# =========================
+#     mulerx Reader
+# =========================
+def mulerx_tsvx_reader(dir_name, file_name):
+    if '-da-' in dir_name:
+        p.set_active('danish')
+    elif '-en-' in dir_name:
+        p.set_active('english')
+    elif '-es-' in dir_name:
+        p.set_active('spanish')
+    elif '-tr-' in dir_name:
+        p.set_active('turkish')
+    elif '-ur-' in dir_name:
+        p.set_active('urdu')
+    my_dict = {}
+    my_dict["doc_id"] = file_name.replace(".tsvx", "") # e.g., article-10901.tsvx
+    my_dict["event_dict"] = {}
+    my_dict["sentences"] = []
+    my_dict["relation_dict"] = {}
+
+    # Read tsvx file
+    for line in open(dir_name + file_name, encoding='UTF-8'):
+        line = line.split('\t')
+        if line[0] == 'Text':
+            my_dict["doc_content"] = line[1]
+        elif line[0] == 'Event':
+            end_char = int(line[4]) + len(line[2])
+            my_dict["event_dict"][line[1]] = {"mention": line[2], "start_char": int(line[4]), "end_char": end_char} 
+            # keys to be added later: sent_id & subword_id
+        elif line[0] == 'Relation':
+            event_id1 = line[1]
+            event_id2 = line[2]
+            rel = line[3]
+            my_dict["relation_dict"][f"{(event_id1, event_id2)}"] = rel
+        else:
+            raise ValueError("Reading a file not in HiEve tsvx format...")
+    
+    # Split document into sentences
+    sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
+    for sent in sents_tokenized:
+        sent_dict = {}
+        sent_dict["sent_id"] = sent['id'] - 1
+        sent_dict["content"] = sent['text']
+        sent_dict["sent_start_char"] = sent['dspan'][0]
+        sent_dict["sent_end_char"] = sent['dspan'][1] + 1 # because trankit format
+
+        # Tokenized, Part-Of-Speech Tagging, Dependency Parsing
+        parsed_tokens = p.posdep(sent_dict['content'].split(), is_sent=True)['tokens']
+        sent_dict["tokens"] = []
+        sent_dict["pos"] = []
+        sent_dict['heads'] = []
+        sent_dict['deps'] = []
+        sent_dict['idx_char_heads'] = []
+        sent_dict['text_heads'] = []
+        for token in parsed_tokens:
+            sent_dict['tokens'].append(token['text'])
+            sent_dict['pos'].append(token['upos'])
+            head = token['head'] - 1 
+            sent_dict['heads'].append(head)
+            if head != -1:
+                text_heads = parsed_tokens[head]['text']
+                sent_dict['text_heads'].append(text_heads)
+            else:
+                sent_dict['text_heads'].append('ROOT')
+            sent_dict['deps'].append(token['deprel'])
+        sent_dict["token_span_SENT"] = tokenized_to_origin_span(sent_dict["content"], sent_dict["tokens"])
+        sent_dict["token_span_DOC"] = span_SENT_to_DOC(sent_dict["token_span_SENT"], sent_dict["sent_start_char"])
+        my_dict["sentences"].append(sent_dict)
+    
+    # Add sent_id as an attribute of event
+    for event_id, event_dict in my_dict["event_dict"].items():
+        my_dict["event_dict"][event_id]["sent_id"] = sent_id = sent_id_lookup(my_dict, event_dict["start_char"], event_dict["end_char"])
+        if sent_id == None:
+            print("False to find sent_id")
+            print(f'mydict: {my_dict}')
+            print(f"event: {event_dict}")
+            continue
+        my_dict["event_dict"][event_id]["token_id"] = id_lookup(my_dict["sentences"][sent_id]["token_span_DOC"], event_dict["start_char"], event_dict["end_char"])
+        if not all(tok in  my_dict["event_dict"][event_id]["mention"] for tok in my_dict["sentences"][sent_id]["tokens"][my_dict["event_dict"][event_id]["token_id"][0]: my_dict["event_dict"][event_id]["token_id"][-1] + 1]):
+            print(f'{my_dict["event_dict"][event_id]["mention"]} - \
+            {my_dict["sentences"][sent_id]["tokens"][my_dict["event_dict"][event_id]["token_id"][0]: my_dict["event_dict"][event_id]["token_id"][-1] + 1]}')
+            print(f'{my_dict["event_dict"][event_id]}  - {my_dict["sentences"][sent_id]}')
+    
+    doc_content = my_dict['doc_content']
+    sent_spans = [(sent['sent_start_char'], sent['sent_end_char']) for sent in my_dict['sentences']]
+    corefed_doc = predictor.predict(document=doc_content)
+    doc_tokens = corefed_doc['document']
+    token_span_doc = tokenized_to_origin_span(doc_content, doc_tokens)
+    coref_clusters = []
+    for i, c in enumerate(corefed_doc['clusters']):
+        cluster = defaultdict(list)
+        for m in c:
+            mention_span = (token_span_doc[m[0]][0], token_span_doc[m[-1]][-1])
+            cluster['mentions'].append(mention_span)
+            for j, (start, end) in enumerate(sent_spans):
+                if start <= mention_span[0] and end >= mention_span[1]:
+                    cluster['sentences'].append(j)
+        coref_clusters.append(dict(cluster))
+    my_dict['coref'] = coref_clusters
+    
     return my_dict
 
 

@@ -9,7 +9,7 @@ from data_modules.utils import sentence_encode
 from sklearn.model_selection import KFold, train_test_split
 import tqdm
 from data_modules.datapoint_formats import get_datapoint
-from data_modules.readers import cat_xml_reader, ctb_cat_reader, tml_reader, tsvx_reader
+from data_modules.readers import cat_xml_reader, ctb_cat_reader, tml_reader, tsvx_reader, mulerx_tsvx_reader
 import random
 import numpy as np
 import torch
@@ -34,6 +34,8 @@ class Preprocessor(object):
             self.reader = tml_reader
         elif dataset == 'Causal-TB':
             self.reader = ctb_cat_reader
+        elif 'mulerx' in dataset:
+            self.reader = mulerx_tsvx_reader
         else:
             raise ValueError("We have not supported this dataset {} yet!".format(self.dataset))
 
@@ -266,10 +268,230 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         processed_test = processor.process_and_save(test, processed_path, save_cache)
         return {0: [processed_train, processed_val, processed_test]}
 
+    if dataset=='subev_mulerx_en':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/subevent-en-20/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='subev_mulerx_da':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/subevent-da-20/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='subev_mulerx_es':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/subevent-es-20/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='subev_mulerx_tr':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/subevent-tr-20/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='subev_mulerx_ur':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/subevent-ur-20/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='causal_mulerx_en':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/causal-en-10/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='causal_mulerx_da':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/causal-da-10/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='causal_mulerx_es':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/causal-es-10/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='causal_mulerx_tr':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/causal-tr-10/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
+    if dataset=='causal_mulerx_ur':
+        datapoint = 'hoteere_data_point'
+        data_dir = 'datasets/mulerx/causal-ur-10/'
+        train_dir = data_dir + 'train/'
+        test_dir = data_dir + 'test/'
+        val_dir = data_dir + 'dev/'
+
+        processor = Preprocessor(dataset, datapoint)
+        validate = processor.load_dataset(dir_name=val_dir)
+        train = processor.load_dataset(dir_name=train_dir)
+        test = processor.load_dataset(dir_name=test_dir)
+
+        processed_path = data_dir + 'train.json'
+        processed_train = processor.process_and_save(train, processed_path, save_cache)
+
+        processed_path = data_dir + 'val.json'
+        processed_val = processor.process_and_save(validate, processed_path, save_cache)
+
+        processed_path = data_dir + 'test.json'
+        processed_test = processor.process_and_save(test, processed_path, save_cache)
+        return {0: [processed_train, processed_val, processed_test]}
+    
     print(f"We have not supported {dataset} dataset!")
     return None
     
 
 if __name__=='__main__':
-    dataset = 'ESL'
+    dataset = 'IC'
     load(dataset=dataset)
