@@ -668,7 +668,7 @@ def mulerx_tsvx_reader(dir_name, file_name):
     for line in open(dir_name + file_name, encoding='UTF-8'):
         line = line.split('\t')
         if line[0] == 'Text':
-            my_dict["doc_content"] = line[1]
+            my_dict["doc_content"] = '\t'.join(line[1:])
         elif line[0] == 'Event':
             end_char = int(line[4]) + len(line[2])
             my_dict["event_dict"][line[1]] = {"mention": line[2], "start_char": int(line[4]), "end_char": end_char} 
@@ -682,35 +682,54 @@ def mulerx_tsvx_reader(dir_name, file_name):
             raise ValueError("Reading a file not in HiEve tsvx format...")
     
     # Split document into sentences
-    sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
-    for sent in sents_tokenized:
+    sent_tokenized_text = [sent['text'] for sent in p.ssplit(my_dict["doc_content"])['sentences']]
+    sent_span = tokenized_to_origin_span(my_dict["doc_content"], sent_tokenized_text)
+    count_sent = 0
+    for sent in sent_tokenized_text:
         sent_dict = {}
-        sent_dict["sent_id"] = sent['id'] - 1
-        sent_dict["content"] = sent['text']
-        sent_dict["sent_start_char"] = sent['dspan'][0]
-        sent_dict["sent_end_char"] = sent['dspan'][1] + 1 # because trankit format
+        sent_dict["sent_id"] = count_sent
+        sent_dict["content"] = sent
+        sent_dict["sent_start_char"] = sent_span[count_sent][0]
+        sent_dict["sent_end_char"] = sent_span[count_sent][1]
+        count_sent += 1
 
         # Tokenized, Part-Of-Speech Tagging, Dependency Parsing
-        parsed_tokens = p.posdep(sent_dict['content'].split(), is_sent=True)['tokens']
+        _spacy_token = p.posdep(sent_dict["content"], is_sent=True)['tokens']
+        spacy_token = []
+        for token in _spacy_token:
+            if token.get('expanded') == None:
+                spacy_token.append(token)
+            else:
+                spacy_token = spacy_token + token['expanded']
+
         sent_dict["tokens"] = []
         sent_dict["pos"] = []
         sent_dict['heads'] = []
         sent_dict['deps'] = []
         sent_dict['idx_char_heads'] = []
         sent_dict['text_heads'] = []
-        for token in parsed_tokens:
-            sent_dict['tokens'].append(token['text'])
-            sent_dict['pos'].append(token['upos'])
+
+        # spaCy-tokenized tokens & Part-Of-Speech Tagging
+        for token in spacy_token:
+            sent_dict["tokens"].append(token['text'])
+            sent_dict["pos"].append(token['upos'])
             head = token['head'] - 1 
             sent_dict['heads'].append(head)
             if head != -1:
-                text_heads = parsed_tokens[head]['text']
+                text_heads = spacy_token[head]['text']
                 sent_dict['text_heads'].append(text_heads)
             else:
                 sent_dict['text_heads'].append('ROOT')
             sent_dict['deps'].append(token['deprel'])
-        sent_dict["token_span_SENT"] = tokenized_to_origin_span(sent_dict["content"], sent_dict["tokens"])
-        sent_dict["token_span_DOC"] = span_SENT_to_DOC(sent_dict["token_span_SENT"], sent_dict["sent_start_char"])
+        # print(sent)
+        # print(sent_dict["tokens"])
+        try:
+            sent_dict["token_span_SENT"] = tokenized_to_origin_span(sent, sent_dict["tokens"])
+            sent_dict["token_span_DOC"] = span_SENT_to_DOC(sent_dict["token_span_SENT"], sent_dict["sent_start_char"])
+            assert len(sent_dict['heads']) == len(sent_dict['tokens'])
+        except:
+            print('Something was wrong!')
+            return None
         my_dict["sentences"].append(sent_dict)
     
     # Add sent_id as an attribute of event
