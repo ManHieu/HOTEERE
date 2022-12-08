@@ -16,3 +16,5 @@ logs_HiEve/*
 result_HiEve.txt
 logs_Causal-TB/*
 result_Causal-TB.txt
+logs_*
+result_causal_mulerx_*

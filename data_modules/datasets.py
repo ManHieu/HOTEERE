@@ -187,6 +187,41 @@ class ESLDataset(EEREDataset):
     input_format_type = 'ECI_input'
     output_format_type = 'ECI_output'
 
+class mulerxDataset(EEREDataset):
+    sample_rate = 1
+    natural_relation_types = {
+                            'EffectCause': 'is caused by', 
+                            'CauseEffect': 'causes', 
+                            'NoRel': "has no relation to"
+                            }
+    input_format_type = 'ECI_input'
+    output_format_type = 'ECI_output'
+
+
+@register_dataset
+class mulerxEnDataset(mulerxDataset):
+    name = 'causal_mulerx_da'
+
+@register_dataset
+class mulerxEnDataset(mulerxDataset):
+    name = 'causal_mulerx_en'
+
+
+
+@register_dataset
+class mulerxEnDataset(mulerxDataset):
+    name = 'causal_mulerx_es'
+
+
+@register_dataset
+class mulerxEnDataset(mulerxDataset):
+    name = 'causal_mulerx_tr'
+
+
+@register_dataset
+class mulerxEnDataset(mulerxDataset):
+    name = 'causal_mulerx_ur'
+
 
 @register_dataset
 class CTBDataset(EEREDataset):

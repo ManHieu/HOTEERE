@@ -48,17 +48,22 @@ def hoteere_data_point(my_dict):
     
     for key, val in my_dict['relation_dict'].items():
         eid1, eid2 = re.sub('\W+','', key.split(',')[0].strip()), re.sub('\W+','', key.split(',')[1].strip())
-        if my_dict['event_dict'].get(eid1) == None:
-            e1 = my_dict['event_dict'].get(int(eid1))
-        else:
-            print(f"There is no {eid1} in list event!")
-            continue
+        try:
+            e1, e2 = None, None
+            if my_dict['event_dict'].get(eid1) != None:
+                e1 = my_dict['event_dict'].get(eid1)
+            else:
+                e1 = my_dict['event_dict'].get(int(eid1))
 
-        if my_dict['event_dict'].get(eid2) == None:
-            e2 = my_dict['event_dict'].get(int(eid2))
-        else:
-            print(f"There is no {eid2} in list event!")
-            continue
+            if my_dict['event_dict'].get(eid2) != None:
+                e2 = my_dict['event_dict'].get(eid2)
+            else:
+                e2 = my_dict['event_dict'].get(int(eid2))
+
+        except:
+            if e1 == None or e2 == None:
+                print(f"There is no {eid1} in list event!")
+                print(f"There is no {eid2} in list event!")
         
         sid1, sid2 = e1['sent_id'], e2['sent_id']
         e1_span = (e1['start_char'] - my_dict['sentences'][sid1]['sent_start_char'], e1['end_char'] - my_dict['sentences'][sid1]['sent_start_char'])

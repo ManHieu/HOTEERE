@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 from model.sinkhorn import SinkhornDistance
-from transformers import T5Tokenizer, T5EncoderModel
+from transformers import T5Tokenizer, MT5EncoderModel
 
 
 class SentenceSelectOT(nn.Module):
@@ -28,7 +28,7 @@ class SentenceSelectOT(nn.Module):
         super().__init__()
         self.finetune = finetune
         if self.finetune == True:
-            self.encoder = T5EncoderModel.from_pretrained(encoder_name_or_path, output_hidden_states=True)
+            self.encoder = MT5EncoderModel.from_pretrained(encoder_name_or_path, output_hidden_states=True)
             self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name_or_path)
             self.hidden_size = 768 if 'base' in encoder_name_or_path else 1024
         else:

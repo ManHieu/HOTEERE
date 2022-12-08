@@ -656,6 +656,128 @@ def ctb_cat_reader(dir_name, file_name):
     return my_dict
 
 
+# =========================
+#     mulerx Reader
+# =========================
+def mulerx_tsvx_reader(dir_name, file_name):
+    if '-da-' in dir_name:
+        p.set_active('danish')
+    elif '-en-' in dir_name:
+        p.set_active('english')
+    elif '-es-' in dir_name:
+        p.set_active('spanish')
+    elif '-tr-' in dir_name:
+        p.set_active('turkish')
+    elif '-ur-' in dir_name:
+        p.set_active('urdu')
+    my_dict = {}
+    my_dict["doc_id"] = file_name.replace(".tsvx", "") # e.g., article-10901.tsvx
+    my_dict["event_dict"] = {}
+    my_dict["sentences"] = []
+    my_dict["relation_dict"] = {}
+
+    # Read tsvx file
+    for line in open(dir_name + file_name, encoding='UTF-8'):
+        line = line.split('\t')
+        if line[0] == 'Text':
+            my_dict["doc_content"] = '\t'.join(line[1:])
+        elif line[0] == 'Event':
+            end_char = int(line[4]) + len(line[2])
+            my_dict["event_dict"][line[1]] = {"mention": line[2], "start_char": int(line[4]), "end_char": end_char} 
+            # keys to be added later: sent_id & subword_id
+        elif line[0] == 'Relation':
+            event_id1 = line[1]
+            event_id2 = line[2]
+            rel = line[3]
+            my_dict["relation_dict"][f"{(event_id1, event_id2)}"] = rel
+        else:
+            raise ValueError("Reading a file not in HiEve tsvx format...")
+    
+    # Split document into sentences
+    sent_tokenized_text = [sent['text'] for sent in p.ssplit(my_dict["doc_content"])['sentences']]
+    sent_span = tokenized_to_origin_span(my_dict["doc_content"], sent_tokenized_text)
+    count_sent = 0
+    for sent in sent_tokenized_text:
+        sent_dict = {}
+        sent_dict["sent_id"] = count_sent
+        sent_dict["content"] = sent
+        sent_dict["sent_start_char"] = sent_span[count_sent][0]
+        sent_dict["sent_end_char"] = sent_span[count_sent][1]
+        count_sent += 1
+
+        # Tokenized, Part-Of-Speech Tagging, Dependency Parsing
+        _spacy_token = p.posdep(sent_dict["content"], is_sent=True)['tokens']
+        spacy_token = []
+        for token in _spacy_token:
+            if token.get('expanded') == None:
+                spacy_token.append(token)
+            else:
+                spacy_token = spacy_token + token['expanded']
+
+        sent_dict["tokens"] = []
+        sent_dict["pos"] = []
+        sent_dict['heads'] = []
+        sent_dict['deps'] = []
+        sent_dict['idx_char_heads'] = []
+        sent_dict['text_heads'] = []
+
+        # spaCy-tokenized tokens & Part-Of-Speech Tagging
+        for token in spacy_token:
+            sent_dict["tokens"].append(token['text'])
+            sent_dict["pos"].append(token['upos'])
+            head = token['head'] - 1 
+            sent_dict['heads'].append(head)
+            if head != -1:
+                text_heads = spacy_token[head]['text']
+                sent_dict['text_heads'].append(text_heads)
+            else:
+                sent_dict['text_heads'].append('ROOT')
+            sent_dict['deps'].append(token['deprel'])
+        # print(sent)
+        # print(sent_dict["tokens"])
+        try:
+            sent_dict["token_span_SENT"] = tokenized_to_origin_span(sent, sent_dict["tokens"])
+            sent_dict["token_span_DOC"] = span_SENT_to_DOC(sent_dict["token_span_SENT"], sent_dict["sent_start_char"])
+            assert len(sent_dict['heads']) == len(sent_dict['tokens'])
+        except:
+            print('Something was wrong!')
+            return None
+        my_dict["sentences"].append(sent_dict)
+    
+    # Add sent_id as an attribute of event
+    for event_id, event_dict in my_dict["event_dict"].items():
+        my_dict["event_dict"][event_id]["sent_id"] = sent_id = sent_id_lookup(my_dict, event_dict["start_char"], event_dict["end_char"])
+        if sent_id == None:
+            print("False to find sent_id")
+            print(f'mydict: {my_dict}')
+            print(f"event: {event_dict}")
+            continue
+        my_dict["event_dict"][event_id]["token_id"] = id_lookup(my_dict["sentences"][sent_id]["token_span_DOC"], event_dict["start_char"], event_dict["end_char"])
+        if not all(tok in  my_dict["event_dict"][event_id]["mention"] for tok in my_dict["sentences"][sent_id]["tokens"][my_dict["event_dict"][event_id]["token_id"][0]: my_dict["event_dict"][event_id]["token_id"][-1] + 1]):
+            print(f'{my_dict["event_dict"][event_id]["mention"]} - \
+            {my_dict["sentences"][sent_id]["tokens"][my_dict["event_dict"][event_id]["token_id"][0]: my_dict["event_dict"][event_id]["token_id"][-1] + 1]}')
+            print(f'{my_dict["event_dict"][event_id]}  - {my_dict["sentences"][sent_id]}')
+    
+    doc_content = my_dict['doc_content']
+    sent_spans = [(sent['sent_start_char'], sent['sent_end_char']) for sent in my_dict['sentences']]
+    corefed_doc = predictor.predict(document=doc_content)
+    doc_tokens = corefed_doc['document']
+    token_span_doc = tokenized_to_origin_span(doc_content, doc_tokens)
+    coref_clusters = []
+    for i, c in enumerate(corefed_doc['clusters']):
+        cluster = defaultdict(list)
+        for m in c:
+            mention_span = (token_span_doc[m[0]][0], token_span_doc[m[-1]][-1])
+            cluster['mentions'].append(mention_span)
+            for j, (start, end) in enumerate(sent_spans):
+                if start <= mention_span[0] and end >= mention_span[1]:
+                    cluster['sentences'].append(j)
+        coref_clusters.append(dict(cluster))
+    my_dict['coref'] = coref_clusters
+    
+    return my_dict
+
+
 if __name__ == '__main__':
     my_dict = tsvx_reader(dir_name="datasets/hievents_v2/processed/", file_name="article-1526.tsvx")
     with open("article-1526.tsvx.json", 'w') as f:

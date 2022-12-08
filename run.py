@@ -11,6 +11,7 @@ import os
 import optuna
 from transformers import HfArgumentParser
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning import loggers as pl_loggers
 from arguments import DataTrainingArguments, ModelArguments, TrainingArguments
 from data_modules.datamodule import EEREDataModule
@@ -90,6 +91,7 @@ def run(defaults: Dict):
                                     save_weights_only=True,
                                     filename='{epoch}-{f1_dev:.2f}', # this cannot contain slashes 
                                     )
+        early_stop_callback = EarlyStopping(monitor="f1_dev", min_delta=0.00, patience=5, verbose=False, mode="max")
         lr_logger = LearningRateMonitor(logging_interval='step')
         tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"logs_{args.job}")
 
@@ -100,7 +102,7 @@ def run(defaults: Dict):
                         weight_selector_loss=training_args.weight_selector_loss,
                         OT_eps=1e-3,
                         OT_max_iter=75,
-                        OT_reduction='sum',
+                        OT_reduction='mean',
                         dropout=0.5,
                         num_warm_up=training_args.num_warm_up,
                         kg_weight=model_args.kg_weight,
@@ -117,14 +119,14 @@ def run(defaults: Dict):
         
         trainer = Trainer(
             logger=tb_logger,
-            min_epochs=training_args.num_epoches,
+            min_epochs=training_args.num_warm_up + 10,
             max_epochs=training_args.num_epoches, 
             accelerator="gpu", 
             devices=[args.gpu],
             accumulate_grad_batches=training_args.gradient_accumulation_steps,
             num_sanity_val_steps=3, 
             val_check_interval=1.0, # use float to check every n epochs 
-            callbacks = [lr_logger, checkpoint_callback],
+            callbacks = [lr_logger, checkpoint_callback, early_stop_callback],
         )
 
         print("Training....")
@@ -155,16 +157,16 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [10, 15, 20, 30]),
-        'num_warm_up': trial.suggest_categorical('num_warm_up', [1, 2]),
-        'batch_size': trial.suggest_categorical('batch_size', [8]),
-        'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [15, 20, 30, 50]),
+        'num_warm_up': trial.suggest_categorical('num_warm_up', [3, 5, 7, 10]),
+        'batch_size': trial.suggest_categorical('batch_size', [16]),
+        'weight_mle': trial.suggest_categorical('weight_mle', [0.5]),
         'selector_lr': trial.suggest_categorical('selector_lr', [1e-5, 3e-5, 5e-5]),
-        'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 7e-5, 1e-4, 3e-5, 5e-4, 8e-4, 1e-3]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [1e-4, 5e-4, 1e-3, 5e-3]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
-        'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
-        'n_align_sents': trial.suggest_categorical('n_align_sents', [1, 2]),
-        'n_align_words': trial.suggest_categorical('n_align_words', [1, 3, 5]),
+        'kg_weight': trial.suggest_categorical('kg_weight', [0.0]),
+        'n_align_sents': trial.suggest_categorical('n_align_sents', [1]),
+        'n_align_words': trial.suggest_categorical('n_align_words', [1]),
         'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
         'n_selected_words': trial.suggest_categorical('n_selected_words', [None]),
         'output_max_length': trial.suggest_categorical('output_max_length', [64]),
@@ -183,7 +185,7 @@ def objective(trial: optuna.Trial):
     if args.tuning:
         record_file_name = f'result_{args.job}.txt'
 
-    if f1 > 0.5:
+    if f1 > 0.2:
         with open(record_file_name, 'a', encoding='utf-8') as f:
             f.write(f"Dataset: {dataset} \n")
             f.write(f"Random_state: 1741\n")

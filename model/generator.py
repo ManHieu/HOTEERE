@@ -4,7 +4,7 @@ from typing import List, Tuple
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers import MT5ForConditionalGeneration, T5Tokenizer
 from data_modules.input_formats import INPUT_FORMATS
 from data_modules.output_format import OUTPUT_FORMATS
 from model.sinkhorn import SinkhornDistance
@@ -25,7 +25,7 @@ class GenOT(nn.Module):
                 output_max_length: int = 32):
         super().__init__()
         self.hidden_size = 768 if 'base' in pretrain_model else 1024
-        self.generator = T5ForConditionalGeneration.from_pretrained(pretrain_model)
+        self.generator = MT5ForConditionalGeneration.from_pretrained(pretrain_model)
         self.tokenizer = T5Tokenizer.from_pretrained(tokenizer, model_max_length=512)
         self.tokenizer_for_generate = T5Tokenizer.from_pretrained(tokenizer, model_max_length=512)
         # when generating, we will use the logits of right-most token to predict the next token
