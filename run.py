@@ -164,7 +164,7 @@ def objective(trial: optuna.Trial):
         'selector_lr': trial.suggest_categorical('selector_lr', [1e-5, 3e-5, 5e-5]),
         'generator_lr': trial.suggest_categorical('generator_lr', [1e-4, 5e-4, 1e-3, 5e-3]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
-        'kg_weight': trial.suggest_categorical('kg_weight', [0.0]),
+        'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
         'n_align_sents': trial.suggest_categorical('n_align_sents', [1]),
         'n_align_words': trial.suggest_categorical('n_align_words', [1]),
         'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
