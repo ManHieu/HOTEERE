@@ -64,7 +64,7 @@ def run(defaults: Dict):
         number_step_in_epoch = len(dm.train_dataloader())
         output_dir = os.path.join(
             training_args.output_dir,
-            f'{args.job}'
+            f'{args.job}-ipw'
             f'-slr{training_args.selector_lr}'
             f'-glr{training_args.generator_lr}'
             f'-eps{training_args.num_epoches}'
@@ -100,7 +100,7 @@ def run(defaults: Dict):
                         weight_selector_loss=training_args.weight_selector_loss,
                         OT_eps=1e-3,
                         OT_max_iter=75,
-                        OT_reduction='sum',
+                        OT_reduction='mean',
                         dropout=0.5,
                         num_warm_up=training_args.num_warm_up,
                         kg_weight=model_args.kg_weight,
@@ -155,16 +155,16 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [10, 15, 20, 30]),
-        'num_warm_up': trial.suggest_categorical('num_warm_up', [1, 2]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [7]),
+        'num_warm_up': trial.suggest_categorical('num_warm_up', [0]),
         'batch_size': trial.suggest_categorical('batch_size', [8]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
-        'selector_lr': trial.suggest_categorical('selector_lr', [1e-5, 3e-5, 5e-5]),
-        'generator_lr': trial.suggest_categorical('generator_lr', [5e-5, 7e-5, 1e-4, 3e-5, 5e-4, 8e-4, 1e-3]),
+        'selector_lr': trial.suggest_categorical('selector_lr', [8e-6]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [5e-4]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
         'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
-        'n_align_sents': trial.suggest_categorical('n_align_sents', [1, 2]),
-        'n_align_words': trial.suggest_categorical('n_align_words', [1, 3, 5]),
+        'n_align_sents': trial.suggest_categorical('n_align_sents', [2]),
+        'n_align_words': trial.suggest_categorical('n_align_words', [1]),
         'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),
         'n_selected_words': trial.suggest_categorical('n_selected_words', [None]),
         'output_max_length': trial.suggest_categorical('output_max_length', [64]),
