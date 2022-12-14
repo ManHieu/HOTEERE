@@ -117,8 +117,8 @@ def run(defaults: Dict):
         
         trainer = Trainer(
             logger=tb_logger,
-            min_epochs=training_args.num_epoches,
-            max_epochs=training_args.num_epoches, 
+            min_epochs=training_args.num_warm_up + 5,
+            max_epochs=training_args.num_epoches if training_args.num_epoches > training_args.num_warm_up + 5 else training_args.num_warm_up + 5, 
             accelerator="gpu", 
             devices=[args.gpu],
             accumulate_grad_batches=training_args.gradient_accumulation_steps,
@@ -155,12 +155,12 @@ def run(defaults: Dict):
 
 def objective(trial: optuna.Trial):
     defaults = {
-        'num_epoches': trial.suggest_categorical('num_epoches', [7]),
-        'num_warm_up': trial.suggest_categorical('num_warm_up', [0]),
-        'batch_size': trial.suggest_categorical('batch_size', [8]),
+        'num_epoches': trial.suggest_categorical('num_epoches', [7, 15, 20]),
+        'num_warm_up': trial.suggest_categorical('num_warm_up', [1, 2, 3, 5]),
+        'batch_size': trial.suggest_categorical('batch_size', [16]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
-        'selector_lr': trial.suggest_categorical('selector_lr', [8e-6]),
-        'generator_lr': trial.suggest_categorical('generator_lr', [5e-4]),
+        'selector_lr': trial.suggest_categorical('selector_lr', [8e-6, 1e-5, 5e-5]),
+        'generator_lr': trial.suggest_categorical('generator_lr', [1e-4, 3e-4, 5e-4, 8e-4, 1e-3]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
         'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
         'n_align_sents': trial.suggest_categorical('n_align_sents', [2]),
