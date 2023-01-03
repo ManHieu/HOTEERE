@@ -451,6 +451,7 @@ def cat_xml_reader(dir_name, file_name, intra=True, inter=False):
             if sid1 == sid2 and my_dict['relation_dict'].get(f'{(eid1, eid2)}') == None and my_dict['relation_dict'].get(f'{(eid2, eid1)}') ==None:
                 my_dict['relation_dict'][f'{(eid1, eid2)}'] = 'NoRel'
                 
+    event_pairs = combinations(my_dict['event_dict'].keys(), 2)
     if inter==True:
         dir_name = './datasets/EventStoryLine/annotated_data/v0.9/'
         inter_dir_name = dir_name.replace('annotated_data', 'evaluation_format/full_corpus') + 'event_mentions_extended/'

@@ -20,42 +20,46 @@ class EEREDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.data_dir = data_dir
         self.fold = fold
-    
-    def train_dataloader(self):
-        dataset = load_dataset(name=self.data_name,
+        self.train = load_dataset(name=self.data_name,
                                 data_dir=self.data_dir,
                                 fold=self.fold,
                                 split='train')
+        self.val = load_dataset(name=self.data_name,
+                                data_dir=self.data_dir,
+                                fold=self.fold,
+                                split='val')
+        self.test = load_dataset(name=self.data_name,
+                                data_dir=self.data_dir,
+                                fold=self.fold,
+                                split='test')
+        self.my_collate = self.train.my_collate
+    
+    def train_dataloader(self):
+        
         dataloader = DataLoader(
-            dataset=dataset,
+            dataset=self.train,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=dataset.my_collate
+            collate_fn=self.my_collate
         )
         return dataloader
     
     def val_dataloader(self):
-        dataset = load_dataset(name=self.data_name,
-                                data_dir=self.data_dir,
-                                fold=self.fold,
-                                split='val')
+       
         dataloader = DataLoader(
-            dataset=dataset,
+            dataset=self.val,
             batch_size=self.batch_size,
             shuffle=False,
-            collate_fn=dataset.my_collate
+            collate_fn=self.my_collate
         )
         return dataloader
     
     def test_dataloader(self):
-        dataset = load_dataset(name=self.data_name,
-                                data_dir=self.data_dir,
-                                fold=self.fold,
-                                split='test')
+        
         dataloader = DataLoader(
-            dataset=dataset,
+            dataset=self.test,
             batch_size=self.batch_size,
             shuffle=False,
-            collate_fn=dataset.my_collate
+            collate_fn=self.my_collate
         )
         return dataloader
