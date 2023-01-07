@@ -66,7 +66,7 @@ class SentenceSelectOT(nn.Module):
         [x]TODO: Add a trainabel filler which will dot product with embedding of X and Y to get new embedding vetor before feed them into Optimal Transport
         TODO: Softmin instead of softmax (encourage sample farer sentence?)
         TODO: Consider chossing k sentences as k consecutive actions 
-        TODO: Filler is a (1, hidden_size) tensor instead of linear
+        [x]TODO: Filler is a (1, hidden_size) tensor instead of linear
         """
         bs = len(host_ids)
         if self.finetune == True:
@@ -149,38 +149,6 @@ class SentenceSelectOT(nn.Module):
         P_Y = pad_sequence(P_Y, batch_first=True)
 
         cost, pi, C = self.sinkhorn(X_presentations, Y_presentations, P_X, P_Y) # pi: (bs, nX, nY)
-        # =============================An action with top-5 opts====================================
-        # aligns = []
-        # for i in range(bs):
-        #     nY = n_kg_sent[i] + len(context_ids[i])
-        #     _host_align = torch.sum(pi[i, 1:, :nY], dim=0)
-        #     _host_align = torch.softmax(_host_align, dim=0)
-        #     aligns.append(_host_align)
-        # aligns = pad_sequence(aligns, batch_first=True) # bs x nY
-        # aligns = 1.0 - (1.0 - aligns) ** self.n_selected_sents # https://doi.org/10.1145/3289600.3290999
-        
-        # log_probs = torch.zeros((bs))
-        # selected_sents = [[]*bs]
-        # for i in range(self.n_selected_sents):
-        #     if is_training:
-        #         probs = torch.distributions.Categorical(probs=aligns)
-        #         selected_senentence = probs.sample()
-        #         log_probs = log_probs + probs.log_prob(selected_senentence)
-        #     else:
-        #         sorted_probs, idxs = torch.sort(aligns, dim=1, descending=True)
-        #         selected_senentence = idxs[:, i]
-        #         log_probs = log_probs + torch.log(sorted_probs[:, i])
-        #     for j in range(bs):
-        #         if selected_senentence[j] < len(context_ids[j]) + n_kg_sent[j]:
-        #             if selected_senentence[j] < len(context_ids[j]):
-        #                 context_sent_id = context_ids[j][selected_senentence[j]]
-        #                 context_sent = doc_sentences[j][context_sent_id]
-        #                 selected_sents[j].append((context_sent_id, context_sent))
-        #             else:
-        #                 kg_sent_id = selected_senentence[j] - len(context_ids[j])
-        #                 kg_sent = kg_sents[j][kg_sent_id]
-        #                 selected_sents[j].append((9999, kg_sent)) # this means we put kg sent in the tail of the augmented doc
-        #========================================================================================================
         values, aligns = torch.max(pi, dim=1)
         selected_sents = []
         selected_sent_embs = []

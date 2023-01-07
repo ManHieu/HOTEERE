@@ -12,16 +12,13 @@ from model.generator import GenOT
 from model.selector import SentenceSelectOT
 from utils.tools import compute_f1
 from torch.optim.lr_scheduler import LambdaLR
+import json
 
 
 class HOTEERE(pl.LightningModule):
-    """
-    TODO: sampling from p(Y) (p(y_i) = sum_j(pi_yi_xj))
-    """
     def __init__(self,
                 weight_mle: float,
                 num_training_step: int,
-                num_warm_up: int,
                 selector_lr: float,
                 generator_lr: float,
                 weight_selector_loss: float = 0.5,
@@ -36,8 +33,8 @@ class HOTEERE(pl.LightningModule):
                 tokenizer_name_or_path: str = 't5-base',
                 n_selected_sents: int = None,
                 n_selected_words: int = None,
-                n_align_sents: int = 5,
-                n_align_words: int = 10,
+                n_align_sents: int = 1,
+                n_align_words: int = 1,
                 output_max_length: int = 32,
                 use_rnn: bool = False) -> None:
         super().__init__()
@@ -47,7 +44,6 @@ class HOTEERE(pl.LightningModule):
         self.num_training_step = num_training_step
         self.selector_lr = selector_lr
         self.generator_lr = generator_lr
-        self.num_warm_up = num_warm_up
 
         self.hidden_size = 768 if 'base' in encoder_name_or_path else 1024
         self.selector = SentenceSelectOT(hidden_size=768,
@@ -146,158 +142,99 @@ class HOTEERE(pl.LightningModule):
         return contexts, head_positions, tail_positions, labels, head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent
 
     def training_step(self, batch: List[InputExample], batch_idx) -> STEP_OUTPUT:
-        if self.current_epoch >= self.num_warm_up:
-            doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
-            sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
-                                                                            doc_embs=doc_embs,
-                                                                            kg_sents=kg_sents,
-                                                                            kg_sent_embs=kg_sent_embs,
-                                                                            host_ids=host_ids, 
-                                                                            context_sentences_scores=context_sentences_scores, 
-                                                                            is_training=True)
+        doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
+        sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
+                                                                        doc_embs=doc_embs,
+                                                                        kg_sents=kg_sents,
+                                                                        kg_sent_embs=kg_sent_embs,
+                                                                        host_ids=host_ids, 
+                                                                        context_sentences_scores=context_sentences_scores, 
+                                                                        is_training=True)
 
-            contexts, head_positions, tail_positions, labels, \
-            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
-            if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['causal relation']
-                task = 'ECI'
-            elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation']
-                task = 'TRE'
-            elif batch[0].input_format_type == 'SRE_input':
-                task_description_words = ['event hierarchical relation']
-                task = 'SRE'
-            word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
-                                                            input_format_type=batch[0].input_format_type,
-                                                            output_format_type=batch[0].output_format_type,
-                                                            contexts=contexts,
-                                                            head_positions=head_positions,
-                                                            tail_positions=tail_positions,
-                                                            task_description_words=task_description_words,
-                                                            labels=labels,
-                                                            head_sentences=head_sentences,
-                                                            head_pos_in_sent=head_pos_in_sent,
-                                                            tail_sentences=tail_sentences,
-                                                            tail_pos_in_sent=tail_pos_in_sent,
-                                                            is_training=True,
-                                                            is_warm_up=False)
-            selector_rl_loss = - performance_reward * selector_log_probs
-            generator_rl_loss = - performance_reward * generator_log_probs
-            
-            loss = self.weight_selector_loss * selector_rl_loss + \
-                    (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
-            self.log_dict({'perfromance': performance_reward,
-                        's_OT': sent_OT_cost,
-                        'w_OT': word_OT_cost,
-                        'mle': mle_loss, 
-                        }, prog_bar=True)
-            self.log_dict({'s_rl': selector_rl_loss, 
-                        'g_rl': generator_rl_loss,
-                        }, prog_bar=False)
-            if torch.isnan(word_OT_cost).any() or torch.isinf(word_OT_cost).any() \
-                or torch.isnan(sent_OT_cost).any() or torch.isinf(sent_OT_cost).any() \
-                or torch.isnan(loss).any() or torch.isinf(loss).any():
-                return None
-            
-        else:
-            contexts, head_positions, tail_positions, labels, \
-            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
-            if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['causal relation']
-                task = 'ECI'
-            elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation']
-                task = 'TRE'
-            elif batch[0].input_format_type == 'SRE_input':
-                task_description_words = ['event hierarchical relation']
-                task = 'SRE'
-            word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
-                                                            input_format_type=batch[0].input_format_type,
-                                                            output_format_type=batch[0].output_format_type,
-                                                            contexts=contexts,
-                                                            head_positions=head_positions,
-                                                            tail_positions=tail_positions,
-                                                            task_description_words=task_description_words,
-                                                            labels=labels,
-                                                            head_sentences=head_sentences,
-                                                            head_pos_in_sent=head_pos_in_sent,
-                                                            tail_sentences=tail_sentences,
-                                                            tail_pos_in_sent=tail_pos_in_sent,
-                                                            is_training=True,
-                                                            is_warm_up=True)
-            loss = mle_loss
-            self.log_dict({'mle': mle_loss}, prog_bar=True)
+        contexts, head_positions, tail_positions, labels, \
+        head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
+        if batch[0].input_format_type == 'ECI_input':
+            task_description_words = ['causal relation']
+            task = 'ECI'
+        elif batch[0].input_format_type == 'TRE_input':
+            task_description_words = ['temporal relation']
+            task = 'TRE'
+        elif batch[0].input_format_type == 'SRE_input':
+            task_description_words = ['event hierarchical relation']
+            task = 'SRE'
+        word_OT_cost, generator_log_probs, mle_loss, \
+        predicted_seq, gold_seqs, performance_reward, log_important_words = self.generator(task=task,
+                                                        input_format_type=batch[0].input_format_type,
+                                                        output_format_type=batch[0].output_format_type,
+                                                        contexts=contexts,
+                                                        head_positions=head_positions,
+                                                        tail_positions=tail_positions,
+                                                        task_description_words=task_description_words,
+                                                        labels=labels,
+                                                        head_sentences=head_sentences,
+                                                        head_pos_in_sent=head_pos_in_sent,
+                                                        tail_sentences=tail_sentences,
+                                                        tail_pos_in_sent=tail_pos_in_sent,
+                                                        is_training=True,
+                                                        is_warm_up=False)
+        selector_rl_loss = - performance_reward * selector_log_probs
+        generator_rl_loss = - performance_reward * generator_log_probs
+        
+        loss = self.weight_selector_loss * selector_rl_loss + \
+                (1.0 - self.weight_selector_loss) * (self.weight_mle * mle_loss + (1.0 - self.weight_mle) * generator_rl_loss)
+        
+        self.log_dict({'perfromance': performance_reward,
+                    's_OT': sent_OT_cost,
+                    'w_OT': word_OT_cost,
+                    'mle': mle_loss, 
+                    }, prog_bar=True)
+        self.log_dict({'s_rl': selector_rl_loss, 
+                    'g_rl': generator_rl_loss,
+                    }, prog_bar=False)
 
+        if torch.isnan(word_OT_cost).any() or torch.isinf(word_OT_cost).any() \
+            or torch.isnan(sent_OT_cost).any() or torch.isinf(sent_OT_cost).any() \
+            or torch.isnan(loss).any() or torch.isinf(loss).any():
+            return None
+        
         return loss
     
     def validation_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
-        if self.current_epoch >= self.num_warm_up:
-            doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
-            sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
-                                                                            doc_embs=doc_embs,
-                                                                            kg_sents=kg_sents,
-                                                                            kg_sent_embs=kg_sent_embs,
-                                                                            host_ids=host_ids, 
-                                                                            context_sentences_scores=context_sentences_scores, 
-                                                                            is_training=False)
+        doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
+        sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
+                                                                        doc_embs=doc_embs,
+                                                                        kg_sents=kg_sents,
+                                                                        kg_sent_embs=kg_sent_embs,
+                                                                        host_ids=host_ids, 
+                                                                        context_sentences_scores=context_sentences_scores, 
+                                                                        is_training=False)
 
-            contexts, head_positions, tail_positions, labels, \
-            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
-            if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['causal relation']
-                task = 'ECI'
-            elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation']
-                task = 'TRE'
-            elif batch[0].input_format_type == 'SRE_input':
-                task_description_words = ['event hierarchical relation']
-                task = 'SRE'
-            word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
-                                                            input_format_type=batch[0].input_format_type,
-                                                            output_format_type=batch[0].output_format_type,
-                                                            contexts=contexts,
-                                                            head_positions=head_positions,
-                                                            tail_positions=tail_positions,
-                                                            task_description_words=task_description_words,
-                                                            labels=labels,
-                                                            head_sentences=head_sentences,
-                                                            head_pos_in_sent=head_pos_in_sent,
-                                                            tail_sentences=tail_sentences,
-                                                            tail_pos_in_sent=tail_pos_in_sent,
-                                                            is_training=False,
-                                                            is_warm_up=False)
-            
-        else:
-            contexts, head_positions, tail_positions, labels, \
-            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
-            if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['causal relation']
-                task = 'ECI'
-            elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation']
-                task = 'TRE'
-            elif batch[0].input_format_type == 'SRE_input':
-                task_description_words = ['event hierarchical relation']
-                task = 'SRE'
-            word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
-                                                            input_format_type=batch[0].input_format_type,
-                                                            output_format_type=batch[0].output_format_type,
-                                                            contexts=contexts,
-                                                            head_positions=head_positions,
-                                                            tail_positions=tail_positions,
-                                                            task_description_words=task_description_words,
-                                                            labels=labels,
-                                                            head_sentences=head_sentences,
-                                                            head_pos_in_sent=head_pos_in_sent,
-                                                            tail_sentences=tail_sentences,
-                                                            tail_pos_in_sent=tail_pos_in_sent,
-                                                            is_training=False,
-                                                            is_warm_up=True)
-        
+        contexts, head_positions, tail_positions, labels, \
+        head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
+        if batch[0].input_format_type == 'ECI_input':
+            task_description_words = ['causal relation']
+            task = 'ECI'
+        elif batch[0].input_format_type == 'TRE_input':
+            task_description_words = ['temporal relation']
+            task = 'TRE'
+        elif batch[0].input_format_type == 'SRE_input':
+            task_description_words = ['event hierarchical relation']
+            task = 'SRE'
+        word_OT_cost, generator_log_probs, mle_loss, \
+        predicted_seq, gold_seqs, performance_reward, log_important_words = self.generator(task=task,
+                                                        input_format_type=batch[0].input_format_type,
+                                                        output_format_type=batch[0].output_format_type,
+                                                        contexts=contexts,
+                                                        head_positions=head_positions,
+                                                        tail_positions=tail_positions,
+                                                        task_description_words=task_description_words,
+                                                        labels=labels,
+                                                        head_sentences=head_sentences,
+                                                        head_pos_in_sent=head_pos_in_sent,
+                                                        tail_sentences=tail_sentences,
+                                                        tail_pos_in_sent=tail_pos_in_sent,
+                                                        is_training=False,
+                                                        is_warm_up=False)
         return predicted_seq, gold_seqs, task
 
     def validation_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
@@ -317,79 +254,65 @@ class HOTEERE(pl.LightningModule):
         return f1
 
     def test_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
-        if self.current_epoch >= self.num_warm_up:
-            doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
-            sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
-                                                                            doc_embs=doc_embs,
-                                                                            kg_sents=kg_sents,
-                                                                            kg_sent_embs=kg_sent_embs,
-                                                                            host_ids=host_ids, 
-                                                                            context_sentences_scores=context_sentences_scores, 
-                                                                            is_training=False)
+        log_selected_sents = []
+        doc_sentences, doc_embs, kg_sents, kg_sent_embs, host_ids, context_sentences_scores = self.format_input_for_selector(batch)
+        sent_OT_cost, selector_log_probs, selected_sents = self.selector(doc_sentences=doc_sentences,
+                                                                        doc_embs=doc_embs,
+                                                                        kg_sents=kg_sents,
+                                                                        kg_sent_embs=kg_sent_embs,
+                                                                        host_ids=host_ids, 
+                                                                        context_sentences_scores=context_sentences_scores, 
+                                                                        is_training=False)
+        for ss in selected_sents:
+            if len(ss) > 0:
+                log_selected_sents.append(ss)
+            else:
+                log_selected_sents.append(None)
 
-            contexts, head_positions, tail_positions, labels, \
-            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
-            if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['causal relation']
-                task = 'ECI'
-            elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation', 'timeline']
-                task = 'TRE'
-            elif batch[0].input_format_type == 'SRE_input':
-                task_description_words = ['event hierarchical relation']
-                task = 'SRE'
-            word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
-                                                            input_format_type=batch[0].input_format_type,
-                                                            output_format_type=batch[0].output_format_type,
-                                                            contexts=contexts,
-                                                            head_positions=head_positions,
-                                                            tail_positions=tail_positions,
-                                                            task_description_words=task_description_words,
-                                                            labels=labels,
-                                                            head_sentences=head_sentences,
-                                                            head_pos_in_sent=head_pos_in_sent,
-                                                            tail_sentences=tail_sentences,
-                                                            tail_pos_in_sent=tail_pos_in_sent,
-                                                            is_training=False,
-                                                            is_warm_up=False)
-        else:
-            contexts, head_positions, tail_positions, labels, \
-            head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch)
-            if batch[0].input_format_type == 'ECI_input':
-                task_description_words = ['causal relation']
-                task = 'ECI'
-            elif batch[0].input_format_type == 'TRE_input':
-                task_description_words = ['temporal relation']
-                task = 'TRE'
-            elif batch[0].input_format_type == 'SRE_input':
-                task_description_words = ['event hierarchical relation']
-                task = 'SRE'
-            word_OT_cost, generator_log_probs, mle_loss, \
-            predicted_seq, gold_seqs, performance_reward = self.generator(task=task,
-                                                            input_format_type=batch[0].input_format_type,
-                                                            output_format_type=batch[0].output_format_type,
-                                                            contexts=contexts,
-                                                            head_positions=head_positions,
-                                                            tail_positions=tail_positions,
-                                                            task_description_words=task_description_words,
-                                                            labels=labels,
-                                                            head_sentences=head_sentences,
-                                                            head_pos_in_sent=head_pos_in_sent,
-                                                            tail_sentences=tail_sentences,
-                                                            tail_pos_in_sent=tail_pos_in_sent,
-                                                            is_training=False,
-                                                            is_warm_up=True)
-        
-        return predicted_seq, gold_seqs, task
+        contexts, head_positions, tail_positions, labels, \
+        head_sentences, head_pos_in_sent, tail_sentences, tail_pos_in_sent  = self.format_input_for_generator(batch, selected_sents)
+        if batch[0].input_format_type == 'ECI_input':
+            task_description_words = ['causal relation']
+            task = 'ECI'
+        elif batch[0].input_format_type == 'TRE_input':
+            task_description_words = ['temporal relation', 'timeline']
+            task = 'TRE'
+        elif batch[0].input_format_type == 'SRE_input':
+            task_description_words = ['event hierarchical relation']
+            task = 'SRE'
+        word_OT_cost, generator_log_probs, mle_loss, \
+        predicted_seq, gold_seqs, performance_reward, log_important_words, inputs = self.generator(task=task,
+                                                        input_format_type=batch[0].input_format_type,
+                                                        output_format_type=batch[0].output_format_type,
+                                                        contexts=contexts,
+                                                        head_positions=head_positions,
+                                                        tail_positions=tail_positions,
+                                                        task_description_words=task_description_words,
+                                                        labels=labels,
+                                                        head_sentences=head_sentences,
+                                                        head_pos_in_sent=head_pos_in_sent,
+                                                        tail_sentences=tail_sentences,
+                                                        tail_pos_in_sent=tail_pos_in_sent,
+                                                        is_training=False,
+                                                        is_warm_up=False)
+        return predicted_seq, gold_seqs, contexts, log_selected_sents, log_important_words, inputs, task
 
     def test_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
         gold_seqs = []
         pred_seqs = []
         task = outputs[0][-1]
-        for output in outputs:
-            pred_seqs.extend(output[0])
-            gold_seqs.extend(output[1])
+        with open("result.jsonl", 'w', encoding='utf-8') as f:
+            for output in outputs:
+                pred_seqs.extend(output[0])
+                gold_seqs.extend(output[1])
+                for i in range(len(output[0])):
+                    f.write(json.dumps({
+                        'selected_words': output[4][i],
+                        'selected_sents': output[3][i],
+                        'input': output[5][i],
+                        'gold': output[1][i],
+                        'pred': output[0][i],
+                    }) + '\n')
         p, r, f1, report = compute_f1(pred_seqs, gold_seqs, task=task)
         self.log_dict({'hp_metric': f1})
         self.log_dict({'hp_metric/p_test': p, 'hp_metric/r_test': r})
@@ -425,20 +348,10 @@ class HOTEERE(pl.LightningModule):
         
         optimizer = AdamW(optimizer_grouped_pretrain_parameters, betas=[0.9, 0.999], eps=1e-8)
 
-        num_warmup_steps = num_batches_in_epoch * self.num_warm_up
-        num_steps = num_batches_in_epoch * (self.trainer.max_epochs - self.num_warm_up)
-        def lr_lambda(current_step: int):
-            if current_step <= num_warmup_steps:
-                return max(
-                0.0, float(num_warmup_steps - current_step) / float(max(1, num_warmup_steps - num_warmup_steps*0.1))
-                )
-            elif num_warmup_steps < current_step <= num_steps * 0.1 + num_warmup_steps:
-                return float(current_step - num_warmup_steps) / float(max(1, num_steps * 0.1))
-            else:
-                return max(
-                0.0, float(num_steps - current_step + num_warmup_steps) / float(max(1, num_steps - num_steps*0.1))
-                )
-        scheduler = LambdaLR(optimizer, lr_lambda, -1)
+        num_steps = num_batches_in_epoch * self.trainer.max_epochs
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=num_steps*0.2, num_training_steps=num_steps
+        )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

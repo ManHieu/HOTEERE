@@ -40,11 +40,6 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "The output directory where the results and model weights will be written."}
     )
 
-    num_warm_up: int = field(
-        default=1,
-        metadata={"help": "Number warm up steps"}
-    )
-
     selector_lr: float = field(
         default=5e-5,
         metadata={"help": "Learning rate of selector"}

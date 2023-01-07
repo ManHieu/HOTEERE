@@ -17,3 +17,5 @@ result_HiEve.txt
 logs_*/*
 result_Causal-TB.txt
 result_*.txt
+result*
+sample.jsonl

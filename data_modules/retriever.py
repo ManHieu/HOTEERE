@@ -54,23 +54,9 @@ class AtomicRetriever(object):
                 if triples[1] in self.choosen_rel and 'none' not in triples[2]:
                     kb[triples[0]].append((triples[1], triples[2]))
         return kb
-        # heads = []
-        # rels = []
-        # tails = []
-        # for split_path in kb_path:
-        #     for line in open(split_path, encoding='UTF-8'):
-        #         triples = line.split('\t')
-        #         if triples[1] in self.choosen_rel and 'none' not in triples[2]:
-        #             heads.append(triples[0])
-        #             tails.append(triples[2])
-        #             rels.append(triples[1])
-        # df_kb = pd.DataFrame({
-        #     'head': heads,
-        #     'rel': rels,
-        #     'tail': tails,
-        # })
 
     def retrive_from_atomic(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=3):
+        """Retrieve triplet from Atomic and compute similarity score between triplet and input sentences"""
         k_hop_seq = ' '.join(input_seq)
         event_mention = [input_seq[idx] for idx in trigger_token_id]
         lemmatized_mention = [t['lemma'] for t in self.p.lemmatize(event_mention, is_sent=True)['tokens']]
@@ -87,18 +73,8 @@ class AtomicRetriever(object):
             else:
                 triples = self.event_to_concept[(m, lemmatized_m)]
 
-            # if self.event_to_concept.get((m, lemmatized_m)) == None:
-            #     triples = []
-            #     self.kb['conatain_str'] = self.kb['head'].parallel_apply(lambda x: self.check_sub_str(x, m))
-            #     triples.extend(self.kb[self.kb['conatain_str']].values.tolist())
-            #     self.kb['conatain_str'] = self.kb['head'].parallel_apply(lambda x: self.check_sub_str(x, lemmatized_m))
-            #     triples.extend(self.kb[self.kb['conatain_str']].values.tolist())
-            #     self.event_to_concept[(m, lemmatized_m)] = triples
-            # else:
-            #     triples = self.event_to_concept.get((m, lemmatized_m))
-            # print(triples)
             for triple in triples:
-                knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]])
+                knowledge_sent = ' '.join([triple[0], self.rel_to_text[triple[1]], triple[2]]) + ' .'
                 if self.seq_emb_cache.get(knowledge_sent) == None:
                     embeddings1 = self.sim_evaluator.encode([knowledge_sent], convert_to_tensor=True)
                     self.seq_emb_cache[knowledge_sent] = embeddings1
@@ -142,6 +118,7 @@ class ConceptNetRetriever(object):
         self.seq_emb_cache = {}
     
     def retrieve_from_conceptnet(self, input_seq: List[str], trigger_token_id: List[int], top_k: int=5):
+        """Retrieve triplets/ sample sentences from ConceptNet and compute similarity score between triplet and input sentences"""
         k_hop_seq = ' '.join(input_seq)
         event_mention = [input_seq[idx] for idx in trigger_token_id]
         lemmatized_mention = []

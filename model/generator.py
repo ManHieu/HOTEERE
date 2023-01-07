@@ -50,14 +50,15 @@ class GenOT(nn.Module):
             tp = 0
             wrong_struct = 0
             for predict, gold in zip(predicted_seqs, gold_seqs):
-                if predict.startswith('No')==False and gold.startswith('No')==False:
-                    tp = tp + 1
-                if predict.startswith('No')==False:
-                    n_predict = n_predict + 1
-                if gold.startswith('No')==False:
-                    n_gold = n_gold + 1
                 if predict.startswith('Yes')==False and predict.startswith('No')==False:
                     wrong_struct = wrong_struct + 1
+                elif predict.startswith('Yes') and gold.startswith('Yes'):
+                    tp = tp + 1
+                    
+                if predict.startswith('Yes'):
+                    n_predict = n_predict + 1
+                if gold.startswith('Yes'):
+                    n_gold = n_gold + 1
 
             if wrong_struct == len(predicted_seqs):
                 return -1.0
@@ -109,65 +110,6 @@ class GenOT(nn.Module):
             r = (tp + 1)/(n_gold + 1)
             f1 = 2 * p * r / (p + r + 1e-9)
             return f1
-
-    @torch.no_grad()
-    def compute_preserving_event_in_predict_seq_reward(self, predicted_seq: str, trigger_emb, head_pos, tail_pos):
-        if len(head_pos) == 0 and len(tail_pos) == 0:
-            return -1.0
-
-        else:
-            input_ids = self.tokenizer([predicted_seq],
-                                    padding='longest',
-                                    truncation=True,
-                                    return_tensors="pt").input_ids
-            outputs = self.generator.encoder(input_ids=input_ids.cuda(), output_hidden_states=True)
-            outputs_last_hidden_state = outputs.last_hidden_state.squeeze()
-            # print(f"outputs_last_hidden_state: {outputs_last_hidden_state.size()}")
-
-            scores = []
-            if len(head_pos) != 0:
-                str_before_head = []
-                # print(head_pos)
-                head_str = predicted_seq[head_pos[0][0]: head_pos[0][1]]
-                for pos in head_pos:
-                    str_before_head.append(predicted_seq[: pos[0]])
-                num_head_subwords = len(self.tokenizer([head_str])['input_ids'][0]) - 1
-                num_subwords_before_head = [len(ids) - 1 for ids in self.tokenizer(str_before_head)['input_ids']]
-                head_subword_ids = [[x, x + num_head_subwords] for x in num_subwords_before_head] 
-                head_scores = []
-                for head_ids in head_subword_ids:
-                    head_emb = torch.max(outputs_last_hidden_state[head_ids[0]: head_ids[1]], dim=0)[0]
-                    # print(f"head_emb size: {head_emb.size()}")
-                    sim_score = self.cos(trigger_emb[0], head_emb)
-                    head_scores.append(float(sim_score))
-                head_score = sum(head_scores) / len(head_scores)
-                scores.append(head_score)
-            else:
-                scores.append(-1.0)
-                
-            if len(tail_pos) != 0:
-                str_before_tail = []
-                tail_str = predicted_seq[tail_pos[0][0]: tail_pos[0][1]]
-                for pos in tail_pos:
-                    str_before_tail.append(predicted_seq[: pos[0]])
-                num_tail_subwords = len(self.tokenizer([tail_str])['input_ids'][0]) - 1
-                num_subwords_before_tail = [len(ids) - 1 for ids in self.tokenizer(str_before_tail)['input_ids']]
-                tail_subword_ids = [[x, x + num_tail_subwords] for x in num_subwords_before_tail] 
-                tail_scores = []
-                for tail_ids in tail_subword_ids:
-                    try:
-                        tail_emb = torch.max(outputs_last_hidden_state[tail_ids[0]: tail_ids[1]], dim=0)[0]
-                        # print(f"tail_emb size: {tail_emb.size()}")
-                        sim_score = self.cos(trigger_emb[1], tail_emb)
-                        tail_scores.append(float(sim_score))
-                    except:
-                        pdb.set_trace()
-                tail_score = sum(tail_scores) / len(tail_scores)
-                scores.append(tail_score)
-            else:
-                scores.append(-1.0)
-                
-            return sum(scores) / 2
     
     def identify_important_words(self, 
                                 contexts: List[str],
@@ -177,9 +119,9 @@ class GenOT(nn.Module):
                                 is_training: bool = True,
                                 ):
         """
-        TODO: Use fixed label vectors 
+        [x]TODO: Use fixed label vectors  
         TODO: Add prefix ("Find the important words: ")
-        TODO: Use uniform for Y_maginal to accelerate model speed
+        [x]TODO: Use uniform for Y_maginal to accelerate model speed
         """
         bs = len(contexts)
 
@@ -271,36 +213,6 @@ class GenOT(nn.Module):
         P_Y = pad_sequence(P_Y, batch_first=True)
 
         cost, pi, C = self.sinkhorn(X_presentations, Y_presentations, P_X, P_Y) # pi: (bs, nX, nY)
-        #=====================================An action with top-k opts=================================
-        # aligns = []
-        # for i in range(bs):
-        #     nY = len(context_ids[i])
-        #     _host_align = torch.sum(pi[i, 1:, :nY], dim=0)
-        #     _host_align = torch.softmax(_host_align, dim=0)
-        #     aligns.append(_host_align)
-        # aligns = pad_sequence(aligns, batch_first=True) # bs x nY
-        # aligns = 1.0 - (1.0 - aligns) ** self.n_selected_sents # https://doi.org/10.1145/3289600.3290999
-
-        # log_probs = torch.zeros((bs))
-        # selected_words = [[]*bs]
-        # for i in range(self.n_selected_words):
-        #     if is_training:
-        #         probs = torch.distributions.Categorical(probs=aligns)
-        #         selected_word = probs.sample()
-        #         log_probs = log_probs + probs.log_prob(selected_word)
-        #     else:
-        #         sorted_probs, idxs = torch.sort(aligns, dim=1, descending=True)
-        #         selected_word = idxs[:, i]
-        #         log_probs = log_probs + torch.log(sorted_probs[:, i])
-        #     for j in range(bs):
-        #         if selected_word[j] < len(context_ids[j]):
-        #             context_word_id = context_ids[j][selected_word[j]]
-        #             context_word = self.tokenizer.decode([tokenized_input[j][context_word_id]])
-        #             selected_words[j].append((context_word_id, context_word))
-        
-        # for i in range(bs):
-        #     selected_words[i].extend([(num_before_head_subwords[i], head_str), (num_before_tail_subwords[i], tail_str)])
-        #==============================================================================================
         values, aligns = torch.max(pi, dim=1)
         selected_words = []
         mask = torch.zeros_like(pi)
@@ -362,42 +274,32 @@ class GenOT(nn.Module):
         """
         input_formater = INPUT_FORMATS[input_format_type]()
         output_formater = OUTPUT_FORMATS[output_format_type]()
-        if is_warm_up==False:
-            cost, log_probs, selected_words, trigger_embs, \
-            num_before_head_subwords, num_before_tail_subwords = self.identify_important_words(contexts=contexts,
-                                                                                            head_positions=head_positions,
-                                                                                            tail_positions=tail_positions,
-                                                                                            task_description_words=task_description_words,
-                                                                                            is_training=is_training)
-                        
-            bs = len(contexts)
-            inputs = []
-            outputs = []
-            head_strs = []
-            tail_strs = []
-            for i in range(bs):
-                input_txt, head_str, tail_str = input_formater.format_input(context=contexts[i], head_position=head_positions[i], tail_position=tail_positions[i])
-                inputs.append(input_txt)
-                outpt = output_formater.format_output(important_words=selected_words[i], head=head_str, tail=tail_str, label=labels[i],
-                                                    num_before_head_subword=num_before_head_subwords[i], 
-                                                    num_before_tail_subword=num_before_tail_subwords[i])
-                outputs.append(outpt)
-                head_strs.append(head_str)
-                tail_strs.append(tail_str)
-        else:
-            bs = len(contexts)
-            inputs = []
-            outputs = []
-            head_strs = []
-            tail_strs = []
-            for i in range(bs):
-                input_txt, head_str, tail_str = input_formater.format_input(context=contexts[i], head_position=head_positions[i], tail_position=tail_positions[i])
-                inputs.append(input_txt)
-                outpt = output_formater.format_output(head=head_str, tail=tail_str, label=labels[i])
-                outputs.append(outpt)
-                head_strs.append(head_str)
-                tail_strs.append(tail_str)
-
+        log_important_words = []
+        cost, log_probs, selected_words, trigger_embs, \
+        num_before_head_subwords, num_before_tail_subwords = self.identify_important_words(contexts=contexts,
+                                                                                        head_positions=head_positions,
+                                                                                        tail_positions=tail_positions,
+                                                                                        task_description_words=task_description_words,
+                                                                                        is_training=is_training)
+                    
+        bs = len(contexts)
+        inputs = []
+        outputs = []
+        head_strs = []
+        tail_strs = []
+        for i in range(bs):
+            if len(selected_words[i]) > 2:
+                log_important_words.append(selected_words[i])
+            else:
+                log_important_words.append(None)
+            input_txt, head_str, tail_str = input_formater.format_input(context=contexts[i], head_position=head_positions[i], tail_position=tail_positions[i])
+            inputs.append(input_txt)
+            outpt = output_formater.format_output(important_words=selected_words[i], head=head_str, tail=tail_str, label=labels[i],
+                                                num_before_head_subword=num_before_head_subwords[i], 
+                                                num_before_tail_subword=num_before_tail_subwords[i])
+            outputs.append(outpt)
+            head_strs.append(head_str)
+            tail_strs.append(tail_str)
 
         if is_training:
             input_encoded = self.tokenizer(inputs,
@@ -436,23 +338,8 @@ class GenOT(nn.Module):
                                                     num_beams=8,)
             predicted_seq = self.tokenizer.batch_decode(predicted_seq, skip_special_tokens=True)
         
-        if is_warm_up == False:
-            performance_reward = self.compute_performance_reward(predicted_seqs=predicted_seq, gold_seqs=outputs, task=task)
-            # preserving_event_reward = []
-            # for head, tail, seq, trigger_emb in zip(head_strs, tail_strs, predicted_seq, trigger_embs):
-            #     head_position, tail_position = output_formater.find_trigger_position(generated_seq=seq, head=head, tail=tail)
-            #     reward = self.compute_preserving_event_in_predict_seq_reward(predicted_seq=seq,
-            #                                                                 trigger_emb=trigger_emb,
-            #                                                                 head_pos=head_position,
-            #                                                                 tail_pos=tail_position)
-            #     preserving_event_reward.append(reward)
-            # preserving_event_reward = sum(preserving_event_reward) / len(preserving_event_reward)
-        else:
-            cost = 0
-            log_probs = 0
-            performance_reward = 0 
-            # preserving_event_reward = 0
-
-        return cost, log_probs, mle_loss, predicted_seq, outputs, performance_reward
+        performance_reward = self.compute_performance_reward(predicted_seqs=predicted_seq, gold_seqs=outputs, task=task)
+        
+        return cost, log_probs, mle_loss, predicted_seq, outputs, performance_reward, log_important_words, inputs
 
 

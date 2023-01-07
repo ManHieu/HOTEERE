@@ -100,7 +100,6 @@ def run(defaults: Dict):
                         OT_max_iter=75,
                         OT_reduction='mean',
                         dropout=0.5,
-                        num_warm_up=training_args.num_warm_up,
                         kg_weight=model_args.kg_weight,
                         finetune_selector_encoder=training_args.finetune_selector_encoder,
                         finetune_in_OT_generator=training_args.finetune_in_OT_generator,
@@ -115,8 +114,8 @@ def run(defaults: Dict):
         
         trainer = Trainer(
             logger=tb_logger,
-            min_epochs=training_args.num_warm_up + 5,
-            max_epochs=training_args.num_epoches if training_args.num_epoches > training_args.num_warm_up + 5 else training_args.num_warm_up + 5, 
+            min_epochs=5,
+            max_epochs=training_args.num_epoches, 
             accelerator="gpu", 
             devices=[args.gpu],
             accumulate_grad_batches=training_args.gradient_accumulation_steps,
@@ -142,7 +141,7 @@ def run(defaults: Dict):
         print(f"F1: {f1}")
         print(f"P: {p}")
         print(f"R: {r}")
-        shutil.rmtree(f'{output_dir}')
+        # shutil.rmtree(f'{output_dir}')
     
     f1 = sum(f1s)/len(f1s)
     p = sum(ps)/len(ps)
@@ -154,13 +153,12 @@ def run(defaults: Dict):
 def objective(trial: optuna.Trial):
     defaults = {
         'num_epoches': trial.suggest_categorical('num_epoches', [20]),
-        'num_warm_up': trial.suggest_categorical('num_warm_up', [2]),
-        'batch_size': trial.suggest_categorical('batch_size', [32]),
+        'batch_size': trial.suggest_categorical('batch_size', [24]),
         'weight_mle': trial.suggest_categorical('weight_mle', [0.75]),
         'selector_lr': trial.suggest_categorical('selector_lr', [5e-5]),
         'generator_lr': trial.suggest_categorical('generator_lr', [1e-4]),
         'weight_selector_loss': trial.suggest_categorical('weight_selector_loss', [0.25]),
-        'kg_weight': trial.suggest_categorical('kg_weight', [0.1]),
+        'kg_weight': trial.suggest_categorical('kg_weight', [0.005]),
         'n_align_sents': trial.suggest_categorical('n_align_sents', [2]),
         'n_align_words': trial.suggest_categorical('n_align_words', [1]),
         'n_selected_sents': trial.suggest_categorical('n_selected_sents', [None]),

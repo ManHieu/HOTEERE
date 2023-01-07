@@ -38,6 +38,7 @@ class Preprocessor(object):
             raise ValueError("We have not supported this dataset {} yet!".format(self.dataset))
 
     def retrieve_knowledge_sentences(self, my_dict):
+        """Retrieve top 5 sentences/ triplets from the KB"""
         for eid, ev in my_dict['event_dict'].items():
             sid = ev['sent_id']
             knowledge_sentences = []
@@ -94,25 +95,24 @@ class Preprocessor(object):
                         my_dict = pickle.load(f)
                         corpus.append(my_dict)
                 else:
-                    # my_dict = self.reader(dir_name, file_name)
-                    # if my_dict != None:
-                    #     doc_presentation = sentence_encode([sent['content'] for sent in my_dict['sentences']])
-                    #     my_dict['doc_presentation'] = doc_presentation
-                    #     my_dict = self.retrieve_knowledge_sentences(my_dict)
-                    #     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-                    #     with open(cache_file, 'wb') as f:
-                    #         pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
-                    #     corpus.append(my_dict)
-                    pass
-        
+                    my_dict = self.reader(dir_name, file_name)
+                    if my_dict != None:
+                        doc_presentation = sentence_encode([sent['content'] for sent in my_dict['sentences']])
+                        my_dict['doc_presentation'] = doc_presentation
+                        my_dict = self.retrieve_knowledge_sentences(my_dict)
+                        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                        with open(cache_file, 'wb') as f:
+                            pickle.dump(my_dict, f, pickle.HIGHEST_PROTOCOL)
+                        corpus.append(my_dict)
+
         return corpus
     
-    def process_and_save(self, corpus, save_path=None, save_cache=False):
+    def process_and_save(self, corpus, save_path=None):
         if type(corpus) == list:
             processed_corpus = []
             for my_dict in tqdm.tqdm(corpus):
                 processed_corpus.extend(get_datapoint(self.datapoint, my_dict))
-            if save_path != None and save_cache == True:
+            if save_path != None:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 with open(save_path, 'w', encoding='utf-8') as f:
                     json.dump(processed_corpus, f, indent=6)
@@ -121,7 +121,7 @@ class Preprocessor(object):
             for key, topic in corpus.items():
                 for my_dict in tqdm.tqdm(topic):
                     processed_corpus[key].extend(get_datapoint(self.datapoint, my_dict))
-            if save_path != None and save_cache == True:
+            if save_path != None:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 with open(save_path, 'w', encoding='utf-8') as f:
                     json.dump(processed_corpus, f, indent=6)
@@ -138,14 +138,10 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         corpus = list(sorted(corpus, key=lambda x: x['doc_id']))
         train, test, validate = corpus[:70], corpus[80:], corpus[70: 80]
 
-        processed_path = 'datasets/hievents_v2/train.json'
-        processed_train = processor.process_and_save(train, processed_path, save_cache)
+        processed_train = processor.process_and_save(train)
+        processed_val = processor.process_and_save(validate)
+        processed_test = processor.process_and_save(test)
 
-        processed_path = 'datasets/hievents_v2/val.json'
-        processed_val = processor.process_and_save(validate, processed_path, save_cache)
-
-        processed_path = 'datasets/hievents_v2/test.json'
-        processed_test = processor.process_and_save(test, processed_path, save_cache)
         return {0: [processed_train, processed_val, processed_test]}
     
     if dataset == 'IC':
@@ -163,14 +159,10 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         test = [doc for doc in corpus if doc['doc_id'] in test_doc_id]
         validate = [doc for doc in corpus if doc['doc_id'] in val_doc_id]
 
-        processed_path = 'datasets/IC/train.json'
-        processed_train = processor.process_and_save(train, processed_path, save_cache)
+        processed_train = processor.process_and_save(train)
+        processed_val = processor.process_and_save(validate)
+        processed_test = processor.process_and_save(test)
 
-        processed_path = 'datasets/IC/val.json'
-        processed_val = processor.process_and_save(validate, processed_path, save_cache)
-
-        processed_path = 'datasets/IC/test.json'
-        processed_test = processor.process_and_save(test, processed_path, save_cache)
         return {0: [processed_train, processed_val, processed_test]}
    
     if dataset == 'ESL':
@@ -191,13 +183,9 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
             else:
                 _train.append(my_dict)
 
-        # print()
-        # processed_path = f"./datasets/EventStoryLine/intra_data.json"
-        # processed_data = processor.process_and_save(processed_path, data)
-
         random.shuffle(_train)
         folds = {}
-        processed_val = processor.process_and_save(test, None, save_cache)
+        processed_val = processor.process_and_save(test)
         for fold, (train_ids, valid_ids) in enumerate(kfold.split(_train)):
             if fold == load_fold:
                 try:
@@ -206,16 +194,13 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
                     pass
 
                 train = [_train[id] for id in train_ids]
-                # print(train[0])
                 validate = [_train[id] for id in valid_ids]
             
-                processed_path = f"./datasets/EventStoryLine/{fold}/train.json"
-                processed_train = processor.process_and_save(train, processed_path, save_cache)
+                processed_train = processor.process_and_save(train)
+                processed_test = processor.process_and_save(validate)
 
-                processed_path = f"./datasets/EventStoryLine/{fold}/test.json"
-                processed_test = processor.process_and_save(validate, processed_path, save_cache)
-                
                 folds[fold] = [processed_train, processed_val, processed_test]
+                
         return folds
     
     if dataset == 'Causal-TB':
@@ -232,10 +217,11 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
                 train = [corpus[id] for id in train_ids]
                 # print(train[0])
                 validate = [corpus[id] for id in valid_ids]
-                processed_train = processor.process_and_save(train, None, save_cache)
-                processed_val = processor.process_and_save(validate, None, save_cache)
+                processed_train = processor.process_and_save(train)
+                processed_val = processor.process_and_save(validate)
                 
                 folds[fold] = [processed_train, processed_val, processed_val]
+
         return folds
 
     if dataset == 'MATRES':
@@ -248,16 +234,11 @@ def load(dataset: str, load_fold: int=0, save_cache=False):
         train = processor.load_dataset(dir_name=timebank_dir_name)
         test = processor.load_dataset(dir_name=platinum_dir_name)
 
-        processed_path = 'datasets/MATRES/train.json'
-        processed_train = processor.process_and_save(train, processed_path, save_cache)
-
-        processed_path = 'datasets/MATRES/val.json'
-        processed_val = processor.process_and_save(validate, processed_path, save_cache)
-
-        processed_path = 'datasets/MATRES/test.json'
-        processed_test = processor.process_and_save(test, processed_path, save_cache)
-        # TODO: need to fix
-        return {0: [processed_train, processed_test, processed_test]}
+        processed_train = processor.process_and_save(train)
+        processed_val = processor.process_and_save(validate)
+        processed_test = processor.process_and_save(test)
+        
+        return {0: [processed_train, processed_val, processed_test]}
 
     print(f"We have not supported {dataset} dataset!")
     return None

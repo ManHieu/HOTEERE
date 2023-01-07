@@ -31,6 +31,9 @@ class ECIInputFormat(BaseInputFormat):
     template = "{task_prefix}\n\n{context}\n\nIs there a causal relation between {head} and {tail}?"
 
     def format_input(self, context: str, head_position: Tuple[int, int], tail_position: Tuple[int, int]) -> str:
+        """Add maker and feed data into template"""
+        
+        # Find the position of triggers and add marker, aka., []
         head_str = context[head_position[0]: head_position[1]]
         tail_str = context[tail_position[0]: tail_position[1]]
         ordered_position = list(head_position) + list(tail_position)
@@ -41,6 +44,7 @@ class ECIInputFormat(BaseInputFormat):
             if pos == head_position[1] or pos == tail_position[1]:
                 context = context[: pos] + ']' + context[pos :]
         
+        # Feed data into template
         input_txt = self.template.format(task_prefix=self.task_prefix,
                                         context=context, 
                                         head=head_str, 

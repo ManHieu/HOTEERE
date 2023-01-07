@@ -239,10 +239,7 @@ def tml_reader(dir_name, file_name):
     my_dict["doc_content"] = MY_TEXT
     my_dict["sentences"] = []
     my_dict["relation_dict"] = {}
-    try:
-        sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
-    except:
-        pdb.set_trace()
+    sents_tokenized = p.ssplit(my_dict["doc_content"])['sentences']
     for sent in sents_tokenized:
         sent_dict = {}
         sent_dict["sent_id"] = sent['id'] - 1
@@ -579,12 +576,6 @@ def ctb_cat_reader(dir_name, file_name):
         sent_dict["token_span_SENT"] = tokenized_to_origin_span(sent_dict["content"], sent_dict["tokens"])
         sent_dict["token_span_DOC"] = span_SENT_to_DOC(sent_dict["token_span_SENT"], sent_dict["sent_start_char"])
         my_dict["sentences"].append(sent_dict)
-
-        # for tok in v:
-        #     sent_dict['pos'].append(nlp(tok)[0].pos_)
-        # sent_dict['d_span'] = (start, start + len(sent_dict['content']))
-        # assert my_dict['doc_content'][sent_dict['d_span'][0]: sent_dict['d_span'][1]] == sent_dict['content'], f"\n'{sent_dict['content']}' \n '{my_dict['doc_content'][sent_dict['d_span'][0]: sent_dict['d_span'][1]]}'"
-        # my_dict['sentences'].append(sent_dict)
 
     if xml_dom.find('markables') == None:
         print(f"This doc {my_dict['doc_id']} was not annotated!")
